@@ -1,0 +1,76 @@
+{
+  "skill_name": "exam-review-helper",
+  "evals": [
+    {
+      "id": 1,
+      "name": "basic-pdf-review",
+      "prompt": "帮我复习这本高等数学教材，文件在 E:/sk2/高等数学-第八版-上册.pdf，只需要处理前10页作为测试",
+      "expected_output": "生成 Review - 高等数学-第八版-上册/ 目录，包含 extracted_content.md, knowledge.json, Review.html 文件",
+      "files": [],
+      "assertions": [
+        {
+          "name": "output_directory_exists",
+          "check": "目录 'Review - 高等数学-第八版-上册/' 存在"
+        },
+        {
+          "name": "markdown_file_created",
+          "check": "文件 'extracted_content.md' 存在且非空"
+        },
+        {
+          "name": "knowledge_json_created",
+          "check": "文件 'knowledge.json' 存在且是有效 JSON"
+        },
+        {
+          "name": "html_file_created",
+          "check": "文件 'Review.html' 存在且包含 MathJax"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "chapter-detection",
+      "prompt": "提取 E:/sk2/高等数学-第八版-上册.pdf 前50页的知识点，重点识别章节结构",
+      "expected_output": "识别出章节边界，输出章节列表和每章的知识点数量",
+      "files": [],
+      "assertions": [
+        {
+          "name": "chapters_identified",
+          "check": "至少识别出2个章节"
+        },
+        {
+          "name": "knowledge_points_extracted",
+          "check": "每章至少有3个知识点"
+        },
+        {
+          "name": "compression_rate",
+          "check": "压缩率在20-30%之间"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "html-interactivity",
+      "prompt": "为 E:/sk2/docling_output/extracted_content.md 生成可交互的 HTML 复习文档，要有搜索和笔记功能",
+      "expected_output": "生成包含搜索框、笔记输入框、进度追踪的 HTML 文件",
+      "files": ["E:/sk2/docling_output/extracted_content.md"],
+      "assertions": [
+        {
+          "name": "search_functionality",
+          "check": "HTML 包含搜索框和 searchKnowledge 函数"
+        },
+        {
+          "name": "note_functionality",
+          "check": "HTML 包含笔记输入框和 saveNote 函数"
+        },
+        {
+          "name": "progress_tracking",
+          "check": "HTML 包含进度条和 updateProgress 函数"
+        },
+        {
+          "name": "theme_toggle",
+          "check": "HTML 包含主题切换功能"
+        }
+      ]
+    }
+  ]
+}
