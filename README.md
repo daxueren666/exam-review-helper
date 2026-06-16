@@ -3,6 +3,8 @@
 > 把 PDF 教材浓缩成交互式 HTML 复习文档的 [Claude Code Skill](https://docs.claude.com/en/docs/claude-code/skills)。
 > 原生支持扫描版 PDF、章节范围选择、5-pass 深度提取。
 
+![screenshot](docs/screenshot.png)
+
 ## 这是什么
 
 一个在 Claude Code 里调用的 skill。学生上传 PDF 教材说"帮我复习这本"，它会：

@@ -37,21 +37,18 @@ exam-review-helper 生成的复习 HTML 模板。
   - `.status-btn` + `.status-btn[data-status].active`
 - **1.8 卡片状态** —— 行 491-500
   - `.card.status-mastered/review/hard`（左边框颜色）
-- **1.9 banner 系统** —— 行 501-520
-  - `.range-banner`（黄色范围提示）
+- **1.9 banner 系统**
   - `.filter-banner`（蓝色筛选提示）
-- **1.10 学习模式 + 专注模式** —— 行 521-580
-  - `.mode-switcher` / `.mode-btn`
-  - `body.focus-mode *`（专注模式覆盖）
-- **1.11 番茄钟** —— 行 580-590
-- **1.12 响应式**（@media）—— 行 600-720
+- **1.10 学习模式**
+  - `.mode-switcher` / `.mode-btn`（速通 / 标准 / 深度）
+- **1.11 响应式**（@media）
 
-### 2. HTML 结构（行 720-820）
-- `<header>` 含书名 + mode-switcher + focus-toggle + theme-toggle
+### 2. HTML 结构
+- `<header>` 含书名 + mode-switcher + theme-toggle
 - `<div class="top-progress">` sticky 进度条
-- `<div class="range-banner">` 范围提示
-- `<aside class="sidebar">` 含搜索 + 章节导航 + 复习进度
+- `<aside class="sidebar">` 含搜索 + 章节导航（带每章进度） + 全局复习进度
 - `<main class="main">` 内容区
+- `<div class="flashcard-overlay">` 卡片模式 modal
 
 ### 3. JS 部分（行 820-1490）
 - **3.1 数据加载** —— `<script id="knowledge-data">` JSON 解析
@@ -73,9 +70,11 @@ exam-review-helper 生成的复习 HTML 模板。
   - `.nav-chapter-checkbox` 切换章节显隐
   - "全选/全不选"链接
 - **3.8 学习模式**：`setMode('quick'/'standard'/'deep')`
-- **3.9 专注模式 + 番茄钟**：startPomodoro / stopPomodoro
-- **3.10 历史进度续学**：localStorage 记录 scroll 位置
-- **3.11 主题切换**：data-theme="dark" 切换
+- **3.9 历史进度续学**：localStorage 记录 scroll 位置
+- **3.10 主题切换**：data-theme="dark" 切换
+- **3.11 卡片模式（背单词）**：openFlashcard / fcNext / fcPrev / closeFlashcard
+- **3.12 每章进度**：updatePerChapterProgress（侧边栏 nav-chapter-progress）
+- **3.13 智能虚拟节**：clusterVirtualSections（按 page_range 自动切 3-5 节）
 
 ### 4. 关键约定（必读）
 
@@ -141,9 +140,6 @@ exam-review-helper 生成的复习 HTML 模板。
     --status-mastered-bg: #e6f4ea;   --status-mastered-text: #34a853;
     --status-review-bg: #fef3c7;     --status-review-text: #92400e;
     --status-hard-bg: #fee2e2;       --status-hard-text: #b91c1c;
-    --range-banner-bg: linear-gradient(90deg,#fef3c7,#fde68a);
-    --range-banner-text: #92400e;
-    --range-banner-border: var(--accent);
     --filter-banner-bg: #dbeafe;
     --filter-banner-text: #1e40af;
     --btn-hover-bg: #f1f5f9;
@@ -165,7 +161,8 @@ exam-review-helper 生成的复习 HTML 模板。
     --border: #334155;
     --code-bg: #334155;
     --shadow: 0 1px 3px rgba(0,0,0,0.4);
-    --shadow-hover: 0 4px 12px rgba(0,0,0,0.5);
+    --shadow-hover: 0 8px 24px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.35);
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
     --pitfall-bg: #450a0a;
     --pitfall-border: #7f1d1d;
     --formula-bg: #082f49;
@@ -179,9 +176,6 @@ exam-review-helper 生成的复习 HTML 模板。
     --status-mastered-bg: rgba(129,201,149,0.2);   --status-mastered-text: #81c995;
     --status-review-bg: rgba(253,214,99,0.2);      --status-review-text: #fdd663;
     --status-hard-bg: rgba(242,139,130,0.2);       --status-hard-text: #f28b82;
-    --range-banner-bg: linear-gradient(90deg,#3d2f00,#2a1f00);
-    --range-banner-text: #fdd663;
-    --range-banner-border: #b06000;
     --filter-banner-bg: #1e3a5f;
     --filter-banner-text: #8ab4f8;
     --btn-hover-bg: #2d3a4f;
@@ -206,13 +200,25 @@ body {
     font-family: "Inter", "PingFang SC", "Microsoft YaHei", "Source Han Sans CN",
                  -apple-system, BlinkMacSystemFont, "Segoe UI",
                  "Helvetica Neue", Arial, sans-serif;
-    background: var(--bg);
+    background:
+        radial-gradient(ellipse at top left, rgba(37, 99, 235, 0.06), transparent 50%),
+        radial-gradient(ellipse at bottom right, rgba(245, 158, 11, 0.04), transparent 50%),
+        var(--bg);
+    background-attachment: fixed;
     color: var(--text);
     line-height: 1.7;
     font-size: 15px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+[data-theme="dark"] body {
+    background:
+        radial-gradient(ellipse at top left, rgba(96, 165, 250, 0.08), transparent 50%),
+        radial-gradient(ellipse at bottom right, rgba(251, 191, 36, 0.04), transparent 50%),
+        var(--bg);
+    background-attachment: fixed;
 }
 
 .app {
@@ -343,6 +349,165 @@ body {
     font-weight: 500;
 }
 
+/* === 侧边栏两层结构（章+节）=== */
+.nav-item--parent {
+    padding: 0;
+    border-left: none;
+    margin-bottom: 0.25rem;
+    overflow: visible;
+    white-space: normal;
+}
+
+.nav-item-row {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.nav-item-row:hover {
+    background: var(--bg-soft);
+}
+
+.nav-item--parent.active > .nav-item-row {
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.nav-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.625rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0.25rem;
+    transition: transform 0.15s;
+    flex-shrink: 0;
+}
+
+.nav-item--parent.collapsed .nav-toggle {
+    transform: rotate(-90deg);
+}
+
+.nav-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.875rem;
+}
+
+.nav-page {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.nav-sublist {
+    list-style: none;
+    margin: 0.125rem 0 0.375rem 1.5rem;
+    border-left: 1px solid var(--border);
+    padding-left: 0.5rem;
+}
+
+.nav-item--parent.collapsed .nav-sublist {
+    display: none;
+}
+
+.nav-chapter-progress {
+    padding: 0.25rem 0.75rem 0.5rem 1.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.nav-chapter-progress .ncp-text {
+    flex-shrink: 0;
+    min-width: 80px;
+}
+
+.nav-chapter-progress .ncp-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--bg-soft);
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 40px;
+}
+
+.nav-chapter-progress .ncp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--status-mastered-text));
+    border-radius: 2px;
+    transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.nav-chapter-progress .ncp-pct {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--primary);
+    min-width: 30px;
+    text-align: right;
+}
+
+.nav-subitem {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--text-soft);
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    transition: background 0.15s, color 0.15s;
+}
+
+.nav-subitem:hover {
+    background: var(--bg-soft);
+    color: var(--primary);
+}
+
+.nav-subitem.active {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.nav-sub-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.nav-subitem.active .nav-sub-dot {
+    background: var(--primary);
+}
+
+.nav-sub-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-sub-page {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
 .progress-stats {
     font-size: 0.75rem;
     color: var(--text-soft);
@@ -367,8 +532,8 @@ body {
 
 .main {
     grid-area: main;
-    padding: 2rem 3rem;
-    max-width: 900px;
+    padding: 2rem 2.5rem;
+    max-width: 1280px;
     margin: 0 auto;
     width: 100%;
 }
@@ -394,7 +559,7 @@ body {
 
 .chapter {
     margin-bottom: 3rem;
-    scroll-margin-top: 80px;
+    scroll-margin-top: 120px;
 }
 
 .chapter-header {
@@ -439,6 +604,318 @@ body.mode-deep .deep-only { display: block; }
     font-size: 0.9375rem;
 }
 
+.chapter-jumpbar {
+    position: sticky;
+    top: 68px;
+    z-index: 20;
+    background: var(--bg);
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0.625rem 0;
+    margin: -0.5rem 0 1.25rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.jump-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-soft);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+
+.jump-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
+}
+
+.jump-btn.active {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+}
+
+.jump-icon {
+    font-size: 0.875rem;
+    line-height: 1;
+}
+
+.jump-badge {
+    background: var(--bg-soft);
+    padding: 0 6px;
+    border-radius: 10px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 18px;
+    text-align: center;
+}
+
+.jump-btn.active .jump-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
+/* === 卡片模式（背单词）modal === */
+.flashcard-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fcFadeIn 0.2s ease;
+}
+
+@keyframes fcFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.flashcard-overlay[hidden] {
+    display: none;
+}
+
+.flashcard-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+[data-theme="dark"] .flashcard-backdrop {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.flashcard-container {
+    position: relative;
+    z-index: 1;
+    width: min(820px, 94vw);
+    height: min(620px, 90vh);
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 24px;
+    box-shadow: 0 32px 80px rgba(15, 23, 42, 0.35), 0 8px 24px rgba(15, 23, 42, 0.12);
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    overflow: hidden;
+    animation: fcSlideUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+[data-theme="dark"] .flashcard-container {
+    background: rgba(30, 41, 59, 0.85);
+    border-color: rgba(148, 163, 184, 0.15);
+}
+
+@keyframes fcSlideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.fc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.125rem 1.5rem 0.875rem;
+}
+
+.fc-header-info {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+}
+
+.fc-title {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.01em;
+}
+
+.fc-progress {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--primary);
+    font-size: 0.9375rem;
+    background: var(--primary-light);
+    padding: 2px 10px;
+    border-radius: 12px;
+}
+
+.fc-close {
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    font-size: 1.75rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 0.5rem;
+    transition: color 0.15s, transform 0.15s;
+}
+
+.fc-close:hover {
+    color: var(--importance-core);
+    transform: rotate(90deg);
+}
+
+.fc-progressbar {
+    height: 3px;
+    background: var(--bg-soft);
+    overflow: hidden;
+}
+
+.fc-progressbar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #7c3aed);
+    width: 0%;
+    transition: width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.fc-stage-wrap {
+    display: grid;
+    grid-template-columns: 56px 1fr 56px;
+    align-items: stretch;
+    min-height: 0;
+}
+
+.fc-nav {
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    font-size: 2.75rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+    font-family: inherit;
+}
+
+.fc-nav:not(:disabled):hover {
+    color: var(--primary);
+    background: var(--primary-light);
+}
+
+.fc-nav:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+}
+
+.flashcard-stage {
+    padding: 1.5rem 2rem;
+    overflow-y: auto;
+    font-size: 1.0625rem;
+    line-height: 1.8;
+}
+
+.flashcard-stage .card {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    display: block;
+    height: 100%;
+}
+
+.flashcard-stage .card::before {
+    height: 4px;
+    border-radius: 4px 4px 0 0;
+}
+
+.flashcard-stage .card-title {
+    background: linear-gradient(180deg, rgba(37, 99, 235, 0.06), transparent);
+    padding: 0.5rem 0 0.875rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.flashcard-stage .card-title-text {
+    font-size: 1.625rem;
+    font-weight: 700;
+    color: var(--text);
+    display: block;
+    margin-bottom: 0;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+}
+
+.flashcard-stage .card-body {
+    padding: 0.5rem 0;
+    font-size: 1.0625rem;
+}
+
+.flashcard-stage .card-body p {
+    margin: 0.625rem 0;
+}
+
+.flashcard-stage .formula-block {
+    font-size: 1.25rem;
+    padding: 1.5rem;
+    margin: 1rem 0;
+    background: var(--bg-soft);
+    border-radius: 12px;
+    text-align: center;
+}
+
+.flashcard-stage .formula-explanation {
+    font-size: 1rem;
+    color: var(--text-soft);
+    margin-top: 0.5rem;
+}
+
+.flashcard-stage .status-buttons {
+    margin: 1.5rem 0 0.5rem;
+    padding-top: 1rem;
+    border-top: 1px dashed var(--border);
+}
+
+.flashcard-stage .status-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9375rem;
+    border-radius: 8px;
+}
+
+.fc-keyhint {
+    padding: 0.625rem 1.5rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg-soft);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+    letter-spacing: 0.02em;
+}
+
+@media (max-width: 640px) {
+    .flashcard-container {
+        height: 92vh;
+        border-radius: 16px;
+    }
+    .fc-stage-wrap {
+        grid-template-columns: 40px 1fr 40px;
+    }
+    .flashcard-stage {
+        padding: 1rem 1.25rem;
+        font-size: 1rem;
+    }
+    .flashcard-stage .card-title-text {
+        font-size: 1.375rem;
+    }
+}
+
 .section-label {
     font-size: 1.125rem;
     font-weight: 600;
@@ -457,38 +934,150 @@ body.mode-deep .deep-only { display: block; }
     border-radius: 2px;
 }
 
+.section-label .label-text {
+    flex: 1;
+}
+
+.section-label .label-count {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: var(--bg-soft);
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 0.5rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 卡片模式触发按钮（带渐变 + logo）*/
+.fc-trigger {
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    color: #ffffff;
+    padding: 0.375rem 0.875rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.22);
+    transition: transform 0.15s, box-shadow 0.15s;
+    margin-left: auto;
+}
+
+.fc-trigger:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
+.fc-trigger:active {
+    transform: translateY(0);
+}
+
+.fc-trigger-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
 .card-grid {
     display: grid;
-    gap: 0.875rem;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.card-grid.formula-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+@media (max-width: 640px) {
+    .card-grid,
+    .card-grid.formula-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.25rem 1.5rem;
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 16px;
+    padding: 0;
     box-shadow: var(--shadow-card);
-    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+                box-shadow 0.2s, border-color 0.2s;
     position: relative;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+[data-theme="dark"] .card {
+    background: rgba(30, 41, 59, 0.62);
+    border-color: rgba(148, 163, 184, 0.12);
+}
+
+.card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--primary);
+    opacity: 0.85;
+    transition: opacity 0.2s, height 0.2s;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.card.importance-core::before { background: linear-gradient(90deg, var(--importance-core), #f97316); }
+.card.importance-major::before { background: linear-gradient(90deg, var(--importance-major), var(--primary)); }
+.card.importance-minor::before {
+    background: linear-gradient(90deg, var(--text-muted), var(--text-muted));
+    opacity: 0.4;
 }
 
 .card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-4px);
     box-shadow: var(--shadow-hover);
     border-color: var(--primary);
 }
 
-.card.importance-core {
-    border-left: 4px solid var(--importance-core);
+.card:hover::before {
+    height: 4px;
+    opacity: 1;
 }
 
-.card.importance-major {
-    border-left: 4px solid var(--importance-major);
+.card-title {
+    padding: 0.875rem 1.125rem 0.75rem;
+    background: linear-gradient(180deg, rgba(37, 99, 235, 0.04), transparent);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
-.card.importance-minor {
-    border-left: 4px solid var(--importance-minor);
+[data-theme="dark"] .card-title {
+    background: linear-gradient(180deg, rgba(96, 165, 250, 0.07), transparent);
+}
+
+.card-body {
+    padding: 0.875rem 1.125rem 1.125rem;
+    flex: 1;
+}
+
+.card-body p {
+    margin: 0.25rem 0;
+}
+
+.card .status-buttons {
+    margin: 0 1.125rem 0.875rem;
+    padding-top: 0.625rem;
+    border-top: 1px dashed var(--border);
 }
 
 .card.mastered {
@@ -551,22 +1140,26 @@ body.mode-deep .deep-only { display: block; }
     border-color: var(--status-hard-text);
 }
 
-/* 卡片状态 */
-.card.status-mastered { border-left: 4px solid var(--status-mastered-text); opacity: 0.7; }
-.card.status-review { border-left: 4px solid var(--status-review-text); }
+/* 卡片状态 - 用 ::before 顶部色带表示，不用 border-left 避免和 importance 冲突 */
+.card.status-mastered {
+    opacity: 0.7;
+}
+.card.status-mastered::before {
+    background: linear-gradient(90deg, var(--status-mastered-text), #34d399) !important;
+}
+.card.status-review::before {
+    background: linear-gradient(90deg, var(--status-review-text), #fbbf24) !important;
+}
 .card.status-hard {
-    border-left: 4px solid var(--status-hard-text);
-    background: var(--bg-soft);
+    background: rgba(254, 226, 226, 0.5);
+}
+[data-theme="dark"] .card.status-hard {
+    background: rgba(69, 10, 10, 0.45);
+}
+.card.status-hard::before {
+    background: linear-gradient(90deg, var(--status-hard-text), #f87171) !important;
 }
 
-/* range-banner / filter-banner class 化 */
-.range-banner {
-    background: var(--range-banner-bg);
-    border-left: 4px solid var(--range-banner-border);
-    padding: 10px 20px;
-    font-size: 14px;
-    color: var(--range-banner-text);
-}
 .filter-banner {
     background: var(--filter-banner-bg);
     color: var(--filter-banner-text);
@@ -607,16 +1200,16 @@ button:focus-visible, .mode-btn:focus-visible {
     display: flex;
     gap: 4px;
     background: var(--mode-switcher-bg);
-    padding: 3px;
-    border-radius: 6px;
+    padding: 4px;
+    border-radius: 8px;
 }
 .mode-btn {
-    padding: 4px 10px;
-    font-size: 12px;
+    padding: 6px 14px;
+    font-size: 14px;
     border: none;
     background: transparent;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
     color: var(--text-muted);
 }
 .mode-btn.active {
@@ -626,45 +1219,14 @@ button:focus-visible, .mode-btn:focus-visible {
     box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
-/* 专注模式 */
-body.focus-mode .sidebar { display: none !important; }
-body.focus-mode .main { margin-left: 0 !important; max-width: 800px; margin: 0 auto; }
-body.focus-mode .card { font-size: 1.05rem; }
-body.focus-mode .top-progress { background: #1e1e1e; color: #e8eaed; }
-body.focus-mode .progress-stats-top, body.focus-mode .progress-fill-top { color: #8ab4f8; }
-body.focus-mode .mode-switcher { background: var(--bg-soft); }
-body.focus-mode .mode-btn { color: var(--text-soft); }
-body.focus-mode .mode-btn.active { background: var(--primary); color: white; }
-
-/* 番茄钟 */
-.pomodoro-timer {
-    display: none;
-    background: var(--primary);
-    color: white;
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-}
-body.focus-mode .pomodoro-timer { display: inline-block; }
-
-.card-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    cursor: pointer;
-}
-
 .card-title-text {
     flex: 1;
     min-width: 0;
+    font-size: 1rem;
     font-weight: 600;
+    color: var(--text);
     letter-spacing: -0.01em;
+    line-height: 1.4;
 }
 
 .card-page {
@@ -762,8 +1324,12 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
 }
 
 .pitfall-card {
-    background: var(--pitfall-bg);
-    border-left: 4px solid var(--importance-core);
+    background: linear-gradient(180deg, var(--pitfall-bg) 0%, var(--bg-card) 60%);
+    border-top: 3px solid var(--importance-core);
+}
+
+.pitfall-card::after {
+    display: none;
 }
 
 .pitfall-warning {
@@ -772,8 +1338,17 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
 }
 
 .example-card {
-    background: var(--example-bg);
-    border-left: 4px solid #10b981;
+    background: linear-gradient(180deg, var(--example-bg) 0%, var(--bg-card) 60%);
+    border-top: 3px solid #10b981;
+}
+
+.example-card::after {
+    display: none;
+}
+
+.formula-card {
+    background: linear-gradient(180deg, var(--formula-bg) 0%, var(--bg-card) 55%);
+    border-top: 3px solid var(--primary);
 }
 
 .example-key-point {
@@ -909,8 +1484,6 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
                 <button class="mode-btn active" data-mode="standard">📖标准</button>
                 <button class="mode-btn" data-mode="deep">🎓深度</button>
             </div>
-            <button id="focus-toggle" class="mode-btn" style="background:var(--blue,#1a73e8);color:white;padding:6px 12px;border-radius:4px;border:none;cursor:pointer;font-size:13px;">🎯专注</button>
-            <div class="pomodoro-timer" id="pomodoro-timer">🍅 25:00</div>
             <button class="btn-icon" id="theme-toggle" aria-label="切换主题">🌙</button>
             <button class="btn-icon" onclick="window.print()" aria-label="打印">🖨</button>
         </div>
@@ -922,10 +1495,6 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
         <div class="progress-bar" style="flex:1; min-width:120px; max-width:300px; height:8px; background:var(--bg-soft); border-radius:4px; overflow:hidden;">
             <div class="progress-fill" id="progress-fill-top" style="width:0%; height:100%; background:linear-gradient(90deg,var(--primary),var(--status-mastered-text)); transition:width 0.3s ease;"></div>
         </div>
-    </div>
-
-    <div id="range-banner" class="range-banner" style="display:none;">
-        📖 本次范围：<span id="range-text"></span>
     </div>
 
     <aside class="sidebar" id="sidebar">
@@ -957,6 +1526,28 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
     <main class="main" id="main-content">
         <div class="empty-state">加载中...</div>
     </main>
+
+    <div class="flashcard-overlay" id="flashcard-overlay" hidden>
+        <div class="flashcard-backdrop" data-action="fc-close"></div>
+        <div class="flashcard-container">
+            <header class="fc-header">
+                <div class="fc-header-info">
+                    <span class="fc-title" id="fc-title">卡片模式</span>
+                    <span class="fc-progress" id="fc-progress">1 / 1</span>
+                </div>
+                <button class="fc-close" data-action="fc-close" aria-label="关闭">×</button>
+            </header>
+            <div class="fc-progressbar">
+                <div class="fc-progressbar-fill" id="fc-progressbar-fill"></div>
+            </div>
+            <div class="fc-stage-wrap">
+                <button class="fc-nav fc-prev" data-action="fc-prev" aria-label="上一张">‹</button>
+                <div class="flashcard-stage" id="fc-stage"></div>
+                <button class="fc-nav fc-next" data-action="fc-next" aria-label="下一张">›</button>
+            </div>
+            <div class="fc-keyhint">← → 切换 · Esc 关闭 · 状态按钮可点击</div>
+        </div>
+    </div>
 </div>
 
 <script id="knowledge-data" type="application/json">__DATA_PLACEHOLDER__</script>
@@ -995,14 +1586,6 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
 
     document.title = document.title.replace('[教材名称]', data.source || '复习笔记');
     document.getElementById('book-title-display').textContent = data.source || '复习笔记';
-
-    // 显示范围提示（如果 metadata 有范围信息）
-    const meta = data.metadata || {};
-    if (meta.range_description && meta.range_description !== '全书') {
-        const banner = document.getElementById('range-banner');
-        document.getElementById('range-text').textContent = meta.range_description;
-        banner.style.display = 'block';
-    }
 
     const mastered = new Set(safeLSJSON('mastered-concepts', []));
 
@@ -1088,6 +1671,7 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
         }
         updateProgress();
         renderMistakeBook();
+        syncFlashcardIfOpen();
     }
 
     function statusButtons(id) {
@@ -1117,7 +1701,8 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
                 return '<p>• ' + escapeHtml(p) + '</p>';
             }).join('');
             const formula = c.formula ? '<div class="formula-block">' + escapeHtml(c.formula) + '</div>' : '';
-            return '<div class="card ' + importanceClass(c.importance) + diffCls + statusClass + '" data-id="' + escapeHtml(id) + '" data-search="' + escapeHtml((c.name || '') + ' ' + (c.definition || '')) + '">' +
+            const pageData = (c.page != null) ? '" data-page="' + escapeHtml(String(c.page)) : '';
+            return '<div class="card ' + importanceClass(c.importance) + diffCls + statusClass + '" data-id="' + escapeHtml(id) + pageData + '" data-search="' + escapeHtml((c.name || '') + ' ' + (c.definition || '')) + '">' +
                 '<div class="card-title">' +
                     '<span class="card-title-text">' + escapeHtml(c.name || c.concept || '') + '</span>' +
                     difficultyTag(c.difficulty) +
@@ -1134,7 +1719,7 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
                 (related ? '<div class="related-tags">' + related + '</div>' : '') +
             '</div>';
         }).join('');
-        return '<div class="card-grid">' + cards + '</div>';
+        return '<div class="card-grid" data-fc-type="concepts">' + cards + '</div>';
     }
 
     function renderFormulas(formulas) {
@@ -1152,7 +1737,7 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
                 (f.conditions ? '<div class="formula-explanation"><strong>适用条件:</strong> ' + escapeHtml(f.conditions) + '</div>' : '') +
             '</div>';
         }).join('');
-        return '<div class="card-grid">' + cards + '</div>';
+        return '<div class="card-grid formula-grid" data-fc-type="formulas">' + cards + '</div>';
     }
 
     // 事件委托：处理 concept-status 按钮
@@ -1235,7 +1820,7 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
                 '</div>' +
             '</div>';
         }).join('');
-        return '<div class="card-grid">' + cards + '</div>';
+        return '<div class="card-grid" data-fc-type="pitfalls">' + cards + '</div>';
     }
 
     function renderExamples(examples) {
@@ -1252,7 +1837,7 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
                 '</div>' +
             '</div>';
         }).join('');
-        return '<div class="card-grid">' + cards + '</div>';
+        return '<div class="card-grid" data-fc-type="examples">' + cards + '</div>';
     }
 
     function renderConnections(connections) {
@@ -1267,21 +1852,165 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
 
     const html = data.chapters.map(function(ch, idx) {
         const chid = ch.chapter_id || ('chapter-' + (idx + 1));
+        const sec = {
+            concepts: (ch.concepts && ch.concepts.length) ? ch.concepts.length : 0,
+            formulas: (ch.formulas && ch.formulas.length) ? ch.formulas.length : 0,
+            examples: (ch.examples && ch.examples.length) ? ch.examples.length : 0,
+            pitfalls: (ch.pitfalls && ch.pitfalls.length) ? ch.pitfalls.length : 0
+        };
+        const jumpItems = [
+            { type: 'concepts', label: '核心概念', count: sec.concepts, icon: '◆' },
+            { type: 'formulas', label: '重要公式', count: sec.formulas, icon: '∑' },
+            { type: 'examples', label: '典型例题', count: sec.examples, icon: '▸' },
+            { type: 'pitfalls', label: '易错点', count: sec.pitfalls, icon: '⚠' }
+        ].filter(function(s) { return s.count > 0; });
+
+        const jumpBar = jumpItems.length ? '<nav class="chapter-jumpbar" data-chapter="' + chid + '">' +
+            jumpItems.map(function(s) {
+                return '<button class="jump-btn" data-jump="' + s.type + '-' + chid + '" title="跳转到' + s.label + '">' +
+                        '<span class="jump-icon">' + s.icon + '</span>' +
+                        '<span class="jump-label">' + s.label + '</span>' +
+                        '<span class="jump-badge">' + s.count + '</span>' +
+                    '</button>';
+            }).join('') +
+        '</nav>' : '';
+
+        function sectionLabel(type, label, count) {
+            return '<h3 class="section-label" id="' + type + '-' + chid + '">' +
+                '<span class="label-text">' + label + '</span>' +
+                '<span class="label-count">' + count + ' 个</span>' +
+                '<button class="fc-trigger" data-fc-open="' + type + '" data-chapter="' + chid + '" title="' + label + '卡片模式">' +
+                    '<svg class="fc-trigger-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">' +
+                        '<rect x="2" y="3" width="12" height="10" rx="1.5"/>' +
+                        '<path d="M5 6h6M5 8.5h6M5 11h3"/>' +
+                    '</svg>' +
+                    '卡片模式' +
+                '</button>' +
+            '</h3>';
+        }
+
         return '<section class="chapter" id="' + chid + '">' +
             '<div class="chapter-header">' +
                 '<h2 class="chapter-title">' + escapeHtml(ch.chapter_title || '') + '</h2>' +
                 (ch.page_range ? '<span class="chapter-page">pp.' + escapeHtml(ch.page_range) + '</span>' : '') +
             '</div>' +
             (ch.summary ? '<div class="chapter-summary">' + escapeHtml(ch.summary) + '</div>' : '') +
-            (ch.concepts && ch.concepts.length ? '<h3 class="section-label">核心概念</h3>' + renderConcepts(ch.concepts) : '') +
-            (ch.formulas && ch.formulas.length ? '<h3 class="section-label">重要公式</h3>' + renderFormulas(ch.formulas) : '') +
-            (ch.examples && ch.examples.length ? '<h3 class="section-label">典型例题</h3>' + renderExamples(ch.examples) : '') +
-            (ch.pitfalls && ch.pitfalls.length ? '<h3 class="section-label">易错点</h3>' + renderPitfalls(ch.pitfalls) : '') +
-            (ch.connections && ch.connections.length ? '<h3 class="section-label section-connections">章节关联（深度）</h3>' + renderConnections(ch.connections) : '') +
+            jumpBar +
+            (sec.concepts ? sectionLabel('concepts', '核心概念', sec.concepts) + renderConcepts(ch.concepts) : '') +
+            (sec.formulas ? sectionLabel('formulas', '重要公式', sec.formulas) + renderFormulas(ch.formulas) : '') +
+            (sec.examples ? sectionLabel('examples', '典型例题', sec.examples) + renderExamples(ch.examples) : '') +
+            (sec.pitfalls ? sectionLabel('pitfalls', '易错点', sec.pitfalls) + renderPitfalls(ch.pitfalls) : '') +
+            (ch.connections && ch.connections.length ? '<h3 class="section-label section-connections"><span class="label-text">章节关联（深度）</span></h3>' + renderConnections(ch.connections) : '') +
         '</section>';
     }).join('');
 
     main.innerHTML = html;
+
+    // === 卡片模式（背单词）状态机 ===
+    const fcState = { type: null, chapterId: null, grid: null, idx: 0, count: 0 };
+    const fcOverlay = document.getElementById('flashcard-overlay');
+    const fcStage = document.getElementById('fc-stage');
+    const fcProgress = document.getElementById('fc-progress');
+    const fcTitle = document.getElementById('fc-title');
+    const fcProgressFill = document.getElementById('fc-progressbar-fill');
+    const fcPrevBtn = fcOverlay.querySelector('.fc-prev');
+    const fcNextBtn = fcOverlay.querySelector('.fc-next');
+    const fcTypeLabels = {
+        concepts: '核心概念',
+        formulas: '重要公式',
+        examples: '典型例题',
+        pitfalls: '易错点'
+    };
+
+    function renderFlashcard() {
+        if (!fcState.grid) return;
+        const cards = Array.from(fcState.grid.children);
+        if (fcState.idx >= cards.length) return;
+        // 重新从原 DOM 取最新 outerHTML（反映 conceptStatus 最新状态）
+        fcStage.innerHTML = cards[fcState.idx].outerHTML;
+        const pct = cards.length ? ((fcState.idx + 1) / cards.length * 100) : 0;
+        fcProgress.textContent = (fcState.idx + 1) + ' / ' + cards.length;
+        fcProgressFill.style.width = pct + '%';
+        fcPrevBtn.disabled = fcState.idx === 0;
+        fcNextBtn.disabled = fcState.idx === cards.length - 1;
+        if (window.MathJax && MathJax.typesetPromise) {
+            MathJax.typesetPromise([fcStage]).catch(function(e) { console.warn('FC typeset:', e); });
+        }
+    }
+
+    function openFlashcard(type, chapterId) {
+        const chapter = document.getElementById(chapterId);
+        if (!chapter) return;
+        const grid = chapter.querySelector('.card-grid[data-fc-type="' + type + '"]');
+        if (!grid || !grid.children.length) return;
+        fcState.type = type;
+        fcState.chapterId = chapterId;
+        fcState.grid = grid;
+        fcState.idx = 0;
+        fcTitle.textContent = fcTypeLabels[type] || '卡片模式';
+        fcOverlay.hidden = false;
+        document.body.style.overflow = 'hidden';
+        renderFlashcard();
+    }
+
+    function fcNext() {
+        if (!fcState.grid) return;
+        const total = fcState.grid.children.length;
+        if (fcState.idx < total - 1) {
+            fcState.idx++;
+            renderFlashcard();
+        }
+    }
+
+    function fcPrev() {
+        if (fcState.idx > 0) {
+            fcState.idx--;
+            renderFlashcard();
+        }
+    }
+
+    function closeFlashcard() {
+        fcOverlay.hidden = true;
+        document.body.style.overflow = '';
+        fcState.grid = null;
+    }
+
+    // 状态联动：concept 状态变化时，如果 modal 打开且当前是 concept 卡片，重渲染 stage
+    function syncFlashcardIfOpen() {
+        if (!fcOverlay.hidden && fcState.grid) {
+            renderFlashcard();
+        }
+    }
+
+    document.addEventListener('click', function(e) {
+        const openBtn = e.target.closest('[data-fc-open]');
+        if (openBtn) {
+            openFlashcard(openBtn.dataset.fcOpen, openBtn.dataset.chapter);
+            return;
+        }
+        const action = e.target.closest('[data-action]') && e.target.closest('[data-action]').dataset.action;
+        if (action === 'fc-close') closeFlashcard();
+        else if (action === 'fc-next') fcNext();
+        else if (action === 'fc-prev') fcPrev();
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (fcOverlay.hidden) return;
+        if (e.key === 'ArrowRight') { e.preventDefault(); fcNext(); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); fcPrev(); }
+        else if (e.key === 'Escape') { e.preventDefault(); closeFlashcard(); }
+    });
+
+    let fcTouchX = 0;
+    fcStage.addEventListener('touchstart', function(e) {
+        fcTouchX = e.touches[0].clientX;
+    }, { passive: true });
+    fcStage.addEventListener('touchend', function(e) {
+        const dx = e.changedTouches[0].clientX - fcTouchX;
+        if (dx > 50) fcPrev();
+        else if (dx < -50) fcNext();
+    }, { passive: true });
+
 
     // 分章 MathJax typeset（避免一次性 typeset 数千公式卡死浏览器）
     if (window.MathJax && MathJax.typesetPromise) {
@@ -1306,13 +2035,94 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
         }
     }
 
+    // 智能虚拟节：按 page_range 切分；如果数据有真实 sections 优先用
+    function clusterVirtualSections(ch, chid) {
+        if (ch.sections && ch.sections.length) {
+            return ch.sections.map(function(s) {
+                return Object.assign({}, s, { isReal: true });
+            });
+        }
+        const range = String(ch.page_range || '');
+        const m = range.match(/(\d+)\s*[-–~]\s*(\d+)/);
+        if (!m) {
+            return [{
+                section_id: chid + '-all',
+                section_title: '全部',
+                page_range: ch.range || null,
+                isFallback: true
+            }];
+        }
+        const start = parseInt(m[1]);
+        const end = parseInt(m[2]);
+        const total = end - start + 1;
+        if (total <= 0) {
+            return [{
+                section_id: chid + '-all',
+                section_title: '全部',
+                page_range: range,
+                isFallback: true
+            }];
+        }
+        // 每节 5-10 页，目标 3-5 节
+        let sectionSize;
+        if (total <= 10) sectionSize = total;
+        else if (total <= 20) sectionSize = Math.ceil(total / 3);
+        else if (total <= 40) sectionSize = Math.ceil(total / 4);
+        else sectionSize = 10;
+        const sections = [];
+        for (let ps = start; ps <= end; ps += sectionSize) {
+            const pe = Math.min(ps + sectionSize - 1, end);
+            const isSingle = ps === pe;
+            sections.push({
+                section_id: chid + '-p' + ps + '-' + pe,
+                section_title: isSingle ? 'p.' + ps : 'p.' + ps + '-' + pe,
+                page_range: ps + '-' + pe,
+                pageStart: ps,
+                pageEnd: pe,
+                isVirtual: true
+            });
+        }
+        return sections;
+    }
+
     navList.innerHTML = data.chapters.map(function(ch, idx) {
         const chid = ch.chapter_id || ('chapter-' + (idx + 1));
         const title = escapeHtml(ch.chapter_title || ('第' + (idx+1) + '章'));
-        const pg = ch.page_range ? '<span style="color:var(--text-muted);font-size:11px;">p.' + escapeHtml(String(ch.page_range)) + '</span>' : '';
-        return '<li class="nav-item" data-target="' + chid + '" style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;cursor:pointer;border-radius:4px;">'
-            + '<input type="checkbox" class="nav-chapter-checkbox" data-target="' + chid + '" checked style="margin-top:3px;flex-shrink:0;cursor:pointer;accent-color:#1a73e8;">'
-            + '<div style="flex:1;min-width:0;"><div>' + title + '</div>' + pg + '</div></li>';
+        const pg = ch.page_range ? '<span class="nav-page">p.' + escapeHtml(String(ch.page_range)) + '</span>' : '';
+
+        const sections = clusterVirtualSections(ch, chid);
+
+        const sectionItems = sections.map(function(s) {
+            const sid = s.section_id || (chid + '-sec');
+            const sTitle = escapeHtml(s.section_title || '节');
+            const sPg = s.page_range ? '<span class="nav-sub-page">p.' + escapeHtml(String(s.page_range)) + '</span>' : '';
+            // fallback / virtual 都指向 chapter（虚拟节点击走 pageStart 智能滚动）；real 指向 section-block
+            const target = (s.isFallback || s.isVirtual) ? chid : sid;
+            const dataAttrs = s.isVirtual
+                ? ' data-page-start="' + s.pageStart + '" data-page-end="' + s.pageEnd + '"'
+                : '';
+            const cls = s.isFallback ? ' nav-subitem--fallback' : (s.isVirtual ? ' nav-subitem--virtual' : '');
+            return '<li class="nav-subitem' + cls + '" data-target="' + escapeHtml(target) + '"' + dataAttrs + '>' +
+                '<span class="nav-sub-dot"></span>' +
+                '<span class="nav-sub-title">' + sTitle + '</span>' +
+                sPg +
+            '</li>';
+        }).join('');
+
+        return '<li class="nav-item nav-item--parent" data-target="' + chid + '">' +
+            '<div class="nav-item-row">' +
+                '<input type="checkbox" class="nav-chapter-checkbox" data-target="' + chid + '" checked style="flex-shrink:0;cursor:pointer;accent-color:#1a73e8;">' +
+                '<button class="nav-toggle" data-target="' + chid + '" aria-expanded="true">▼</button>' +
+                '<span class="nav-title">' + title + '</span>' +
+                pg +
+            '</div>' +
+            '<div class="nav-chapter-progress" data-chapter="' + chid + '">' +
+                '<span class="ncp-text">0 / 0 已掌握</span>' +
+                '<div class="ncp-bar"><div class="ncp-fill" style="width:0%"></div></div>' +
+                '<span class="ncp-pct">0%</span>' +
+            '</div>' +
+            '<ul class="nav-sublist">' + sectionItems + '</ul>' +
+        '</li>';
     }).join('');
 
     // 章节复选框：实时筛选显示
@@ -1323,32 +2133,94 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
             cb.checked = false;
             const ch = document.getElementById(chid);
             if (ch) ch.style.display = 'none';
-            cb.closest('.nav-item').style.opacity = '0.4';
+            const parent = cb.closest('.nav-item--parent');
+            if (parent) parent.style.opacity = '0.4';
         }
         cb.addEventListener('change', function() {
             const target = document.getElementById(chid);
             if (target) {
                 target.style.display = cb.checked ? '' : 'none';
             }
-            cb.closest('.nav-item').style.opacity = cb.checked ? '1' : '0.4';
+            const parent = cb.closest('.nav-item--parent');
+            if (parent) parent.style.opacity = cb.checked ? '1' : '0.4';
             chapterVisibility[chid] = cb.checked;
             safeLSSet('chapter-visibility', JSON.stringify(chapterVisibility));
             updateChapterProgress();
         });
-        // 阻止 checkbox 点击冒泡到 nav-item（避免触发滚动）
         cb.addEventListener('click', function(e) { e.stopPropagation(); });
     });
 
-    navList.querySelectorAll('.nav-item').forEach(function(item) {
-        item.addEventListener('click', function(e) {
-            if (e.target.tagName === 'INPUT') return;
-            const target = document.getElementById(item.dataset.target);
+    // 折叠状态恢复
+    navList.querySelectorAll('.nav-item--parent').forEach(function(parent) {
+        const chid = parent.dataset.target;
+        if (safeLS('nav-collapsed-' + chid, false)) {
+            parent.classList.add('collapsed');
+            const toggle = parent.querySelector('.nav-toggle');
+            if (toggle) toggle.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    navList.addEventListener('click', function(e) {
+        const toggle = e.target.closest('.nav-toggle');
+        if (toggle) {
+            e.stopPropagation();
+            const chid = toggle.dataset.target;
+            const parent = toggle.closest('.nav-item--parent');
+            if (!parent) return;
+            const collapsed = parent.classList.toggle('collapsed');
+            toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            safeLSSet('nav-collapsed-' + chid, collapsed);
+            return;
+        }
+        if (e.target.tagName === 'INPUT') return;
+
+        const subitem = e.target.closest('.nav-subitem');
+        if (subitem) {
+            const targetId = subitem.dataset.target;
+            const pageStart = subitem.dataset.pageStart;
+            const pageEnd = subitem.dataset.pageEnd;
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebar-backdrop');
+
+            // 虚拟节：找到第一个 data-page 在 [pageStart, pageEnd] 范围内的卡片
+            if (pageStart && pageEnd) {
+                const ps = parseInt(pageStart);
+                const pe = parseInt(pageEnd);
+                const chapter = document.getElementById(targetId);
+                if (chapter) {
+                    const cards = chapter.querySelectorAll('.card[data-page]');
+                    let found = null;
+                    for (const card of cards) {
+                        const cp = parseInt(card.dataset.page);
+                        if (!isNaN(cp) && cp >= ps && cp <= pe) { found = card; break; }
+                    }
+                    if (found) {
+                        found.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        sidebar.classList.remove('open');
+                        backdrop.classList.remove('show');
+                    }
+                    return;
+                }
+            }
+
+            const target = document.getElementById(targetId);
+            if (target && target.style.display !== 'none') {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                sidebar.classList.remove('open');
+                backdrop.classList.remove('show');
+            }
+            return;
+        }
+
+        const parent = e.target.closest('.nav-item--parent');
+        if (parent) {
+            const target = document.getElementById(parent.dataset.target);
             if (target && target.style.display !== 'none') {
                 target.scrollIntoView({ behavior: 'smooth' });
                 document.getElementById('sidebar').classList.remove('open');
                 document.getElementById('sidebar-backdrop').classList.remove('show');
             }
-        });
+        }
     });
 
     const observer = new IntersectionObserver(function(entries) {
@@ -1358,11 +2230,23 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
                 navList.querySelectorAll('.nav-item').forEach(function(item) {
                     item.classList.toggle('active', item.dataset.target === id);
                 });
+                document.querySelectorAll('.jump-btn[data-jump]').forEach(function(btn) {
+                    btn.classList.toggle('active', btn.dataset.jump === id);
+                });
             }
         });
-    }, { rootMargin: '-80px 0px -70% 0px' });
+    }, { rootMargin: '-120px 0px -70% 0px' });
 
     document.querySelectorAll('.chapter').forEach(function(ch) { observer.observe(ch); });
+    document.querySelectorAll('.section-label[id]').forEach(function(el) { observer.observe(el); });
+
+    document.addEventListener('click', function(e) {
+        const jumpBtn = e.target.closest('.jump-btn[data-jump]');
+        if (jumpBtn) {
+            const target = document.getElementById(jumpBtn.dataset.jump);
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
 
     document.getElementById('search-input').addEventListener('input', function(e) {
         const q = e.target.value.trim().toLowerCase();
@@ -1491,6 +2375,30 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
         } else {
             banner.style.display = 'none';
         }
+
+        updatePerChapterProgress();
+    }
+
+    // 每章独立进度（已掌握 concept 数 / 该章总 concept 数）
+    function updatePerChapterProgress() {
+        document.querySelectorAll('.nav-chapter-progress').forEach(function(prog) {
+            const chid = prog.dataset.chapter;
+            const chapter = document.getElementById(chid);
+            if (!chapter) return;
+            const cards = chapter.querySelectorAll('.card[data-id]');
+            const total = cards.length;
+            let mastered = 0;
+            cards.forEach(function(c) {
+                if (conceptStatus[c.dataset.id] === 'mastered') mastered++;
+            });
+            const pct = total ? Math.round(mastered * 100 / total) : 0;
+            const text = prog.querySelector('.ncp-text');
+            const fill = prog.querySelector('.ncp-fill');
+            const pctEl = prog.querySelector('.ncp-pct');
+            if (text) text.textContent = mastered + ' / ' + total + ' 已掌握';
+            if (fill) fill.style.width = pct + '%';
+            if (pctEl) pctEl.textContent = pct + '%';
+        });
     }
 
     // 全选/全不选按钮
@@ -1560,40 +2468,6 @@ body.focus-mode .pomodoro-timer { display: inline-block; }
 
         // 深度模式：connections 章节
         show('.section-connections', isDeep);
-    }
-
-    // === 专注模式 + 番茄钟 (#8) ===
-    let pomodoroInterval = null;
-    let pomodoroSeconds = 25 * 60;
-    document.getElementById('focus-toggle').addEventListener('click', function() {
-        document.body.classList.toggle('focus-mode');
-        const isFocus = document.body.classList.contains('focus-mode');
-        this.textContent = isFocus ? '✕ 退出专注' : '🎯 专注';
-        if (isFocus && !pomodoroInterval) startPomodoro();
-        else if (!isFocus) stopPomodoro();
-    });
-    function startPomodoro() {
-        pomodoroSeconds = 25 * 60;
-        updatePomodoroDisplay();
-        pomodoroInterval = setInterval(function() {
-            pomodoroSeconds--;
-            updatePomodoroDisplay();
-            if (pomodoroSeconds <= 0) {
-                alert('🍅 25 分钟到！休息 5 分钟');
-                stopPomodoro();
-                document.body.classList.remove('focus-mode');
-                document.getElementById('focus-toggle').textContent = '🎯 专注';
-            }
-        }, 1000);
-    }
-    function stopPomodoro() {
-        if (pomodoroInterval) { clearInterval(pomodoroInterval); pomodoroInterval = null; }
-    }
-    function updatePomodoroDisplay() {
-        const m = Math.floor(pomodoroSeconds / 60);
-        const s = pomodoroSeconds % 60;
-        const el = document.getElementById('pomodoro-timer');
-        if (el) el.textContent = '🍅 ' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
     }
 
     // === 历史进度续学 (#5) ===
