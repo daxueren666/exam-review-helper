@@ -2,7 +2,7 @@
 Exam-Review-Helper Controller (简化版 - 对话驱动)
 
 本 controller 只负责**确定性的脚本任务**：
-- PDF 提取（docling）
+- 多格式提取（PDF 用 docling；DOCX/TXT/MD 用 MarkItDown）
 - HTML 生成
 - JSON 校验
 
@@ -10,8 +10,11 @@ Exam-Review-Helper Controller (简化版 - 对话驱动)
 不需要 API key，不需要外部 LLM 调用。
 
 用法:
-    # 提取 PDF
-    python controller.py extract <pdf_path> [--ranges RANGES]
+    # 提取单个文件（PDF/DOCX/TXT/MD）
+    python controller.py extract <source_path>
+
+    # 提取多个文件（可混合格式）
+    python controller.py extract a.pdf b.docx c.md
 
     # 生成 HTML
     python controller.py generate <knowledge_json>
@@ -135,7 +138,8 @@ def export_markdown_with_pages(doc) -> str:
     return fix_heading_hierarchy(md)
 
 
-def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None) -> Dict[str, Any]:
+def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None,
+                ocr_correct: bool = False) -> Dict[str, Any]:
     """用 docling 提取**单个** PDF 为 markdown + 结构化 JSON
 
     Args:
@@ -143,6 +147,7 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None)
         output_dir: 输出目录（默认 Review - <stem>/）
         page_range: 可选，(start, end) 页码范围（1-indexed, 闭区间）。
                     用于处理大 PDF 时分块提取，避免 std::bad_alloc。
+        ocr_correct: 是否对 OCR 输出做后处理纠错（扫描版 PDF 常见误判修复）。
     """
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.base_models import InputFormat
@@ -200,6 +205,18 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None)
         return {"status": "error", "message": msg}
 
     markdown = export_markdown_with_pages(result.document)
+
+    # 可选：OCR 后处理纠错（扫描版 PDF 常见误判）
+    if ocr_correct:
+        try:
+            from ocr_corrector import correct_ocr_errors, has_ocr_markers
+            if has_ocr_markers(markdown):
+                markdown, corrections = correct_ocr_errors(markdown, verbose=True)
+                if corrections:
+                    print(f"[Controller] OCR 纠错：{len(corrections)} 类错误已修", file=sys.stderr)
+        except ImportError:
+            print("[Controller] 警告：ocr_corrector 模块未找到，跳过 OCR 纠错", file=sys.stderr)
+
     markdown_path = output_dir / "extracted_content.md"
     markdown_path.write_text(markdown, encoding="utf-8")
 
@@ -214,6 +231,7 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None)
     return {
         "status": "success",
         "pdf_path": str(pdf_path),
+        "source_path": str(pdf_path),
         "output_dir": str(output_dir),
         "markdown_path": str(markdown_path),
         "json_path": str(json_path),
@@ -414,6 +432,7 @@ def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int =
     return {
         "status": "success" if pages_failed == 0 else "partial",
         "pdf_path": str(pdf_path),
+        "source_path": str(pdf_path),
         "output_dir": str(output_dir),
         "markdown_path": str(markdown_path),
         "json_path": str(json_path),
@@ -425,17 +444,20 @@ def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int =
     }
 
 
-def extract_multiple_pdfs(pdf_paths: list, output_dir: str = None) -> Dict[str, Any]:
-    """提取**多个** PDF 并合并为一个 markdown（用于跨书复习）
+def extract_multiple(source_paths: list, output_dir: str = None,
+                     chunk_size: int = None, no_chunk: bool = False,
+                     strip_images: bool = False, ocr_correct: bool = False) -> Dict[str, Any]:
+    """提取**多个**文件并合并为一个 markdown（用于跨资料复习）
 
-    每个 PDF 单独提取，最后串成一个 extracted_combined.md
+    支持混合格式（如 ["a.pdf", "b.docx", "c.md"]）。
+    每个文件单独提取，最后串成一个 extracted_content.md。
     章节标题前会标注 [来源: <stem>]
     """
-    if not pdf_paths:
-        return {"status": "error", "message": "未提供 PDF"}
+    if not source_paths:
+        return {"status": "error", "message": "未提供源文件"}
 
     if output_dir is None:
-        first = Path(pdf_paths[0])
+        first = Path(source_paths[0])
         output_dir = first.parent / "Review - combined"
     else:
         output_dir = Path(output_dir)
@@ -445,28 +467,32 @@ def extract_multiple_pdfs(pdf_paths: list, output_dir: str = None) -> Dict[str, 
     combined_sources = []
     total_pages = 0
 
-    for pdf_path in pdf_paths:
-        pdf = Path(pdf_path)
-        # 每个 PDF 单独子目录
-        sub_dir = output_dir / pdf.stem
-        result = extract_pdf(str(pdf), str(sub_dir))
-        if result.get("status") != "success":
-            print(f"[Controller] 跳过失败的 PDF: {pdf}")
+    for src_path in source_paths:
+        src = Path(src_path)
+        # 每个文件单独子目录。用 stem + ext 避免同名不同格式的文件互相覆盖
+        # （如 a.docx + a.md 都有 stem "a"，需用 "a.docx" / "a.md" 区分）
+        sub_dir = output_dir / f"{src.stem} ({src.suffix.lstrip('.')})"
+        result = extract(str(src), str(sub_dir),
+                         chunk_size=chunk_size, no_chunk=no_chunk,
+                         strip_images=strip_images, ocr_correct=ocr_correct)
+        if result.get("status") not in ("success", "partial"):
+            print(f"[Controller] 跳过失败的文件: {src}")
             continue
 
         # 读 markdown 加来源标注
         sub_md = Path(result["markdown_path"]).read_text(encoding="utf-8")
-        combined_md.append(f"\n\n# === 来源：{pdf.stem} ({result['pages']} 页) ===\n\n{sub_md}")
-        combined_sources.append({"stem": pdf.stem, "pages": result["pages"]})
-        total_pages += result["pages"]
+        pages = result.get("pages", 0)
+        combined_md.append(f"\n\n# === 来源：{src.stem} ({pages} 页) ===\n\n{sub_md}")
+        combined_sources.append({"stem": src.stem, "pages": pages})
+        total_pages += pages
 
     if not combined_md:
-        return {"status": "error", "message": "所有 PDF 都提取失败"}
+        return {"status": "error", "message": "所有文件都提取失败"}
 
     # 写合并 markdown
     combined_path = output_dir / "extracted_content.md"
     combined_path.write_text("\n".join(combined_md), encoding="utf-8")
-    print(f"\n[Controller] 合并完成: {len(combined_sources)} 本 PDF / {total_pages} 页")
+    print(f"\n[Controller] 合并完成: {len(combined_sources)} 个文件 / {total_pages} 页")
     print(f"  合并 Markdown: {combined_path}")
     print(f"  来源: {combined_sources}")
 
@@ -477,6 +503,126 @@ def extract_multiple_pdfs(pdf_paths: list, output_dir: str = None) -> Dict[str, 
         "sources": combined_sources,
         "total_pages": total_pages,
     }
+
+
+# 向后兼容别名
+extract_multiple_pdfs = extract_multiple
+
+
+def extract(source_path: str, output_dir: str = None,
+            chunk_size: int = None, no_chunk: bool = False,
+            strip_images: bool = False, ocr_correct: bool = False,
+            use_cache: bool = True) -> Dict[str, Any]:
+    """顶层提取分发器。按扩展名路由。
+
+    - .pdf → extract_pdf / chunked_extract_pdf（保留 PDF 专用 auto-chunk 逻辑）
+    - .docx → extractors.extract_document（MarkItDown/mammoth 内核）
+    - .txt/.md → extractors.extract_document（charset-normalizer 编码检测）
+
+    非 PDF 格式忽略 chunk_size / no_chunk 参数（仅对 PDF 生效）。
+    strip_images 对 DOCX 有效（剥离 base64 图片为独立文件）。
+    ocr_correct 对 PDF 有效（扫描版 OCR 后纠错常见误判）。
+    use_cache: 是否使用提取缓存（默认 True，--no-cache 可关闭）。
+    """
+    from config import get_config
+    cfg = get_config()
+
+    path = Path(source_path)
+    if not path.exists():
+        return {"status": "error", "message": f"文件不存在: {path}"}
+
+    # === 安全：文件大小检查 ===
+    size_mb = path.stat().st_size / 1024 / 1024
+    max_mb = cfg.max_file_size_mb(path.suffix)
+    if size_mb > max_mb:
+        return {
+            "status": "error",
+            "message": f"文件过大：{size_mb:.1f}MB > 限制 {max_mb}MB（{path.suffix}）。"
+                       f"可在 config.yaml 的 extraction.max_{path.suffix.lstrip('.')}_size_mb 调整。",
+        }
+
+    # === 确定输出目录 ===
+    if output_dir is None:
+        output_dir = path.parent / f"Review - {path.stem}"
+    else:
+        output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # === 缓存检查 ===
+    if use_cache and cfg.cache_enabled():
+        from cache import check_cache, compute_file_hash, save_cache
+        file_hash = compute_file_hash(path)
+        cached = check_cache(output_dir, file_hash, cfg.cache_dir_name())
+        if cached is not None:
+            return cached
+
+    # === 提取（带重试）===
+    ext = path.suffix.lower()
+    result = _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correct, cfg)
+
+    # === 重试逻辑：PDF chunked 失败时减小 chunk_size 重试 ===
+    if result.get("status") == "error" and ext == ".pdf" and not no_chunk:
+        max_retries = cfg.max_retries()
+        shrink = cfg.retry_chunk_shrink()
+        for retry_i in range(max_retries):
+            current_chunk = (chunk_size or cfg.chunk_size()) // (shrink ** (retry_i + 1))
+            if current_chunk < 5:
+                break  # chunk 太小没意义
+            print(
+                f"[Controller] 第 {retry_i + 1} 次重试：chunk_size={current_chunk}",
+                file=sys.stderr,
+            )
+            result = _do_extract(path, output_dir, current_chunk, False, strip_images, ocr_correct, cfg)
+            if result.get("status") in ("success", "partial"):
+                break
+
+    # === 保存缓存 ===
+    if use_cache and cfg.cache_enabled() and result.get("status") in ("success", "partial"):
+        try:
+            from cache import save_cache
+            save_cache(output_dir, file_hash, result, cfg.cache_dir_name())
+        except Exception as e:
+            # 缓存失败不影响主流程，仅提示
+            print(f"[Controller] 缓存写入失败（不影响本次结果）: {e}", file=sys.stderr)
+
+    return result
+
+
+def _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correct, cfg) -> Dict[str, Any]:
+    """实际提取逻辑（不含缓存/重试），由 extract() 调用。"""
+
+    if path.suffix.lower() == ".pdf":
+        use_chunked = False
+        effective_chunk_size = chunk_size or cfg.chunk_size()
+        auto_mb = cfg.auto_chunk_size_mb()
+        auto_pages = cfg.auto_chunk_pages()
+
+        if not no_chunk:
+            size_mb = path.stat().st_size / 1024 / 1024
+            page_count = _get_pdf_page_count(path)
+            if chunk_size:
+                use_chunked = True
+            elif size_mb > auto_mb or page_count > auto_pages:
+                use_chunked = True
+                print(
+                    f"[Controller] 检测到大 PDF（{size_mb:.1f}MB / {page_count} 页），"
+                    f"自动启用分块提取（chunk={effective_chunk_size}）",
+                    file=sys.stderr,
+                )
+
+        if use_chunked:
+            return chunked_extract_pdf(str(path), str(output_dir), effective_chunk_size)
+        return extract_pdf(str(path), str(output_dir), ocr_correct=ocr_correct)
+
+    # 非 PDF：chunk_size / no_chunk 不适用，仅提示
+    if chunk_size is not None or no_chunk:
+        print(
+            "[Controller] 提示：--chunk-size / --no-chunk 仅对 PDF 生效，"
+            f"对 {path.suffix} 文件无作用",
+            file=sys.stderr,
+        )
+    from extractors import extract_document
+    return extract_document(str(path), str(output_dir), strip_images=strip_images)
 
 
 # ============ Phase: HTML 生成 ============
@@ -556,21 +702,25 @@ def validate_notes(notes_path: str) -> Dict[str, Any]:
     }
 
 
-def generate_html(knowledge_path: str, output_path: str = None) -> Dict[str, Any]:
-    """从 knowledge JSON 生成 HTML"""
+def generate_html(knowledge_path: str, output_path: str = None,
+                  fmt: str = "html", template_path: str = None) -> Dict[str, Any]:
+    """从 knowledge JSON 生成 HTML/MD/JSON（调 generate_html.py 子进程）"""
     import subprocess
 
-    knowledge_path = Path(knowledge_path)
+    knowledge_path = Path(knowledge_path).resolve()
     if not knowledge_path.exists():
         return {"status": "error", "message": f"JSON 不存在: {knowledge_path}"}
 
     cmd = [sys.executable, str(Path(__file__).parent / "generate_html.py"), str(knowledge_path)]
     if output_path:
-        cmd.append(str(output_path))
+        cmd.append(str(Path(output_path).resolve()))
+    if fmt and fmt != "html":
+        cmd.extend(["--format", fmt])
+    if template_path:
+        cmd.extend(["--template", str(Path(template_path).resolve())])
 
     result = subprocess.run(
         cmd,
-        cwd=Path(__file__).parent,
         capture_output=True,
         text=True,
     )
@@ -582,22 +732,72 @@ def generate_html(knowledge_path: str, output_path: str = None) -> Dict[str, Any
     if output_path is None:
         output_dir = knowledge_path.parent
         stem = knowledge_path.stem.replace("_knowledge", "")
+        ext = {"html": ".html", "md": ".md", "json": ".json"}.get(fmt, ".html")
         if output_dir.name.startswith("Review - "):
-            html_path = output_dir / f"Review - {stem}.html"
+            out_file = output_dir / f"Review - {stem}{ext}"
         else:
-            html_path = output_dir / f"{stem}_review.html"
+            out_file = output_dir / f"{stem}_review{ext}"
     else:
-        html_path = Path(output_path)
+        out_file = Path(output_path)
 
-    print(f"[Controller] HTML 生成: {html_path}")
+    print(f"[Controller] 生成完成: {out_file}")
 
     return {
         "status": "success",
-        "html_path": str(html_path),
+        "html_path": str(out_file),  # 向后兼容字段名（实际 ext 由 fmt 决定）
+        "output_path": str(out_file),
+        "format": fmt,
     }
 
 
 # ============ CLI ============
+
+def _cmd_init():
+    """init 子命令：检查依赖 + 生成配置模板。"""
+    print("=== exam-review-helper 初始化检查 ===\n")
+
+    # 1. 检查 Python 依赖
+    deps = [
+        ("docling", "PDF 提取（含 OCR）"),
+        ("markitdown", "DOCX 提取"),
+        ("charset_normalizer", "TXT/MD 编码检测"),
+        ("fitz", "PyMuPDF（PDF 页数）"),
+        ("yaml", "PyYAML（配置文件）"),
+    ]
+    all_ok = True
+    for mod_name, desc in deps:
+        try:
+            __import__(mod_name)
+            print(f"  ✅ {mod_name:25s} {desc}")
+        except ImportError:
+            print(f"  ❌ {mod_name:25s} {desc} —— pip install {mod_name.replace('_', '-')}")
+            all_ok = False
+
+    # 2. 检查 config.yaml
+    skill_root = Path(__file__).parent.parent
+    config_path = skill_root / "config.yaml"
+    if config_path.exists():
+        print(f"\n  ✅ config.yaml 已存在: {config_path}")
+    else:
+        print(f"\n  ⚠️  config.yaml 不存在（将用内置默认值）")
+
+    # 3. 检查 templates/default.html
+    template_path = skill_root / "templates" / "default.html"
+    if template_path.exists():
+        print(f"  ✅ templates/default.html 已存在")
+    else:
+        print(f"  ⚠️  templates/default.html 不存在（将回退到 references/html-template.md）")
+
+    # 4. 总结
+    print("\n=== 总结 ===")
+    if all_ok:
+        print("所有依赖已安装，skill 可正常使用。")
+    else:
+        print("部分依赖缺失，请按上方提示安装。")
+        print("完整安装：pip install -r requirements.txt")
+
+    print("\n用法：python controller.py extract textbook.pdf")
+
 
 def main():
     # 隐藏入口：子进程跑单块提取（不走 argparse）
@@ -613,6 +813,9 @@ def main():
         if page_start < 1 or page_end < page_start:
             print(json.dumps({"status": "error", "message": f"页码范围无效: {page_start}-{page_end}"}))
             sys.exit(2)
+        # 注意：分块子进程模式不支持 ocr_correct（ocr_correct 仅在单进程 extract_pdf 生效）
+        # 因为分块提取走 chunked_extract_pdf → 多子进程并行，每块独立提取后合并，
+        # OCR 纠错在合并后由调用方对完整 markdown 调用 ocr_corrector.correct_ocr_errors
         result = extract_pdf(pdf_path, output_dir, page_range=(page_start, page_end))
         # 通过 stdout 最后一行打印 JSON 结果
         print(json.dumps(result, ensure_ascii=False))
@@ -625,19 +828,34 @@ def main():
 5-pass 知识提取由宿主 LLM 对话执行，不在本脚本内。
 
 典型流程:
-  1. python controller.py extract textbook.pdf
+  1. python controller.py extract textbook.pdf   # 或 notes.docx / chapter.txt / module.md
        → 生成 Review - textbook/extracted_content.md
   2. [宿主 LLM 执行 5-pass，参考 SKILL.md + prompts/ + references/]
        → 生成 Review - textbook/textbook_knowledge.json
   3. python controller.py generate Review - textbook/textbook_knowledge.json
        → 生成 Review - textbook/Review - textbook.html
+
+高级:
+  python controller.py --version              # 显示版本
+  python controller.py --config my.yaml extract book.pdf  # 用自定义配置
+  python controller.py init                   # 检查依赖 + 生成配置模板
+  python controller.py generate k.json --format md  # 输出 Markdown 而非 HTML
         """,
     )
+    parser.add_argument("--version", action="store_true", help="显示版本号并退出")
+    parser.add_argument("--config", default=None, help="配置文件路径（默认读 config.yaml）")
 
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=False)
 
-    p_extract = sub.add_parser("extract", help="用 docling 提取 PDF（支持多个）")
-    p_extract.add_argument("pdf_paths", nargs="+", help="PDF 文件路径（可多个）")
+    p_extract = sub.add_parser(
+        "extract",
+        help="提取教材（支持 PDF/DOCX/TXT/MD，可多个文件混合）",
+    )
+    p_extract.add_argument(
+        "sources",
+        nargs="+",
+        help="源文件路径（可多个，支持混合格式：a.pdf b.docx c.md）",
+    )
     p_extract.add_argument("--output-dir", default=None, help="输出目录（默认 Review - <stem>/ 或 Review - combined/）")
     p_extract.add_argument(
         "--chunk-size",
@@ -650,44 +868,92 @@ def main():
         action="store_true",
         help="禁用自动分块（即使 PDF 很大）",
     )
+    p_extract.add_argument(
+        "--strip-images",
+        action="store_true",
+        help="剥离 base64 内嵌图片为独立文件（DOCX 建议，可减小 markdown 体积 90%）",
+    )
+    p_extract.add_argument(
+        "--ocr-correct",
+        action="store_true",
+        help="对扫描版 PDF 的 OCR 输出做后处理纠错（修正常见汉字误判）",
+    )
+    p_extract.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="禁用提取缓存（强制重新提取）",
+    )
 
-    p_gen = sub.add_parser("generate", help="从 knowledge JSON 生成 HTML")
+    p_gen = sub.add_parser("generate", help="从 knowledge JSON 生成 HTML/MD/JSON")
     p_gen.add_argument("knowledge_json", help="knowledge JSON 路径")
-    p_gen.add_argument("--output", default=None, help="输出 HTML 路径（可选）")
+    p_gen.add_argument("--output", default=None, help="输出路径（可选，默认同目录）")
+    p_gen.add_argument(
+        "--format",
+        choices=["html", "md", "json"],
+        default="html",
+        help="输出格式（默认 html）",
+    )
+    p_gen.add_argument("--template", default=None, help="自定义 HTML 模板路径（仅 --format=html 有效）")
 
     p_val = sub.add_parser("validate", help="校验 Pass 2 segment notes JSON 是否合法")
     p_val.add_argument("notes_path", help="notes JSON 文件路径（或目录，目录则校验 notes_*.json）")
     p_val.add_argument("--strict", action="store_true", help="严格模式：有任何 warning 都 exit 1")
 
+    p_init = sub.add_parser("init", help="检查依赖 + 生成配置模板")
+
     args = parser.parse_args()
 
+    # --version
+    if args.version:
+        try:
+            from config import get_config
+            version = get_config().get("skill.version", "1.0.0") or "1.0.0"
+        except Exception:
+            version = "1.0.0"
+        print(f"exam-review-helper {version}")
+        sys.exit(0)
+
+    # 加载配置（所有子命令都需要）
+    if args.config:
+        from config import load_config
+        load_config(args.config)
+    else:
+        from config import load_config
+        load_config()
+
+    # init 子命令
+    if args.command == "init":
+        _cmd_init()
+        sys.exit(0)
+
+    if args.command is None:
+        parser.print_help()
+        sys.exit(0)
+
     if args.command == "extract":
-        if len(args.pdf_paths) == 1:
-            pdf = Path(args.pdf_paths[0])
-            # 自动判断是否需要分块
-            use_chunked = False
-            chunk_size = args.chunk_size or 50
-
-            if not args.no_chunk:
-                size_mb = pdf.stat().st_size / 1024 / 1024 if pdf.exists() else 0
-                page_count = _get_pdf_page_count(pdf) if pdf.exists() else 0
-                if args.chunk_size:
-                    use_chunked = True
-                elif size_mb > 50 or page_count > 100:
-                    use_chunked = True
-                    print(
-                        f"[Controller] 检测到大 PDF（{size_mb:.1f}MB / {page_count} 页），自动启用分块提取（chunk={chunk_size}）",
-                        file=sys.stderr,
-                    )
-
-            if use_chunked:
-                result = chunked_extract_pdf(str(pdf), args.output_dir, chunk_size)
-            else:
-                result = extract_pdf(str(pdf), args.output_dir)
+        use_cache = not args.no_cache
+        if len(args.sources) == 1:
+            result = extract(
+                args.sources[0],
+                args.output_dir,
+                chunk_size=args.chunk_size,
+                no_chunk=args.no_chunk,
+                strip_images=args.strip_images,
+                ocr_correct=args.ocr_correct,
+                use_cache=use_cache,
+            )
         else:
-            result = extract_multiple_pdfs(args.pdf_paths, args.output_dir)
+            result = extract_multiple(
+                args.sources,
+                args.output_dir,
+                chunk_size=args.chunk_size,
+                no_chunk=args.no_chunk,
+                strip_images=args.strip_images,
+                ocr_correct=args.ocr_correct,
+            )
     elif args.command == "generate":
-        result = generate_html(args.knowledge_json, args.output)
+        result = generate_html(args.knowledge_json, args.output,
+                               fmt=args.format, template_path=args.template)
     elif args.command == "validate":
         target = Path(args.notes_path)
         if target.is_dir():

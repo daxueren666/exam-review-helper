@@ -8,6 +8,14 @@ docling>=2.10.0
 PyMuPDF>=1.23.0
 rapidocr-onnxruntime>=1.3.0
 
+# === 多格式提取（MVP: DOCX/TXT/MD）===
+# Microsoft MarkItDown: DOCX 转 markdown（内部调 mammoth，2026-05 发布 v0.1.6, MIT）
+# 仅用于 DOCX——markitdown 对 TXT 不做编码检测，中文 GBK 会乱码
+markitdown[docx]>=0.1.6
+# charset-normalizer: TXT/MD 编码检测（UTF-8/GBK/GB2312/Big5/GB18030）
+# 中文教材关键——markitdown 不做此检测，必须单独装
+charset-normalizer>=3.4.0
+
 # === docling 间接依赖（必须 pin，否则 import 失败）===
 # python-pptx：docling 的 PowerPoint 后端会 import pptx，即使只处理 PDF
 # transformers>=5.0：docling 2.10+ 的 layout 模型 rt_detr_v2 需要

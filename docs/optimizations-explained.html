@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>skill 优化说明 - 通俗版</title>
+<style>
+:root {
+  --bg: #fafafa;
+  --bg-card: #ffffff;
+  --text: #333;
+  --text-soft: #666;
+  --primary: #2563eb;
+  --accent: #f59e0b;
+  --success: #10b981;
+  --border: #e5e7eb;
+}
+[data-theme="dark"] {
+  --bg: #1a1a1a;
+  --bg-card: #2a2a2a;
+  --text: #e5e5e5;
+  --text-soft: #999;
+  --primary: #60a5fa;
+  --accent: #fbbf24;
+  --success: #34d399;
+  --border: #404040;
+}
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.8;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+.header {
+  text-align: center;
+  padding: 40px 20px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  color: white;
+  border-radius: 16px;
+  margin-bottom: 32px;
+}
+.header h1 { margin: 0 0 8px; font-size: 28px; }
+.header p { margin: 0; opacity: 0.9; }
+.card {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  transition: box-shadow 0.2s;
+}
+.card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.card-number {
+  display: inline-block;
+  width: 32px; height: 32px;
+  line-height: 32px;
+  text-align: center;
+  background: var(--primary);
+  color: white;
+  border-radius: 50%;
+  font-weight: bold;
+  margin-right: 8px;
+}
+.card-title {
+  font-size: 20px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-left: 8px;
+}
+.badge-new { background: var(--success); color: white; }
+.badge-enhance { background: var(--accent); color: white; }
+.problem {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid #ef4444;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+.solution {
+  background: rgba(16, 185, 129, 0.08);
+  border-left: 4px solid var(--success);
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+.example {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid var(--accent);
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin: 12px 0;
+  font-size: 14px;
+}
+code {
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: "Consolas", monospace;
+  font-size: 13px;
+  color: var(--primary);
+}
+.summary {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 24px;
+  margin-top: 32px;
+  border: 2px solid var(--primary);
+}
+.theme-toggle {
+  position: fixed;
+  top: 20px; right: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 44px; height: 44px;
+  cursor: pointer;
+  font-size: 20px;
+}
+</style>
+</head>
+<body data-theme="light">
+
+<button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+
+<div class="header">
+  <h1>📚 exam-review-helper 优化说明</h1>
+  <p>用大白话讲清楚每个优化是什么、为什么、怎么做的</p>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-number">1</span>多格式支持 <span class="badge badge-new">新功能</span></div>
+
+  <div class="problem">
+    <strong>以前的问题：</strong>只能读 PDF。学生有 Word 讲义、TXT 笔记、Markdown 教材就用不了。
+  </div>
+
+  <div class="solution">
+    <strong>现在的改进：</strong>支持 4 种格式——PDF、Word（.docx）、纯文本（.txt）、Markdown（.md）。上传什么都能处理。
+  </div>
+
+  <div class="example">
+    <strong>大白话：</strong>以前只能读"印刷书"（PDF），现在手写笔记（TXT）、电子讲义（Word）、网课资料（Markdown）都能读了。
+    <br><br>
+    <strong>怎么实现的：</strong>
+    <ul>
+      <li>PDF 用 <code>docling</code> 库（带 OCR，能识别扫描版图片）</li>
+      <li>Word 用 <code>markitdown</code> 库（微软 2026 年新出的，内部调 mammoth）</li>
+      <li>TXT/Markdown 用 <code>charset-normalizer</code> 库（自动检测编码，不会乱码）</li>
+    </ul>
+    <strong>踩过的坑：</strong>markitdown 对 TXT 不检测编码，中文 GBK 会乱码——所以 TXT/MD 单独用 charset-normalizer。
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-number">2</span>文科/理科自动识别 <span class="badge badge-new">新功能</span></div>
+
+  <div class="problem">
+    <strong>以前的问题：</strong>只针对理工科优化——要求每章至少 10 个概念、必须提取公式、易错点必须是计算错误。文科教材（如毛泽东思想概论）用这套规则完全不合适。
+  </div>
+
+  <div class="solution">
+    <strong>现在的改进：</strong>自动识别教材是文科还是理科，用不同的提取规则。<strong>用户不用选，上传就行。</strong>
+  </div>
+
+  <div class="example">
+    <strong>大白话：</strong>以前只有"理科试卷"（要公式、要计算），现在自动判断：
+    <ul>
+      <li>看到数学公式、∑∫√ 符号 → 当理科处理（重公式、重计算）</li>
+      <li>看到"观点、理论、意义、历史地位" → 当文科处理（重观点、重论述）</li>
+    </ul>
+    <strong>具体区别：</strong>
+    <table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:14px;">
+      <tr style="background:var(--bg);"><th>维度</th><th>理科</th><th>文科</th></tr>
+      <tr><td>每章概念数</td><td>≥10</td><td>≥8</td></tr>
+      <tr><td>公式</td><td>必须提取</td><td>可选（多数没有）</td></tr>
+      <tr><td>易错点</td><td>计算错误</td><td>概念辨析（如"毛泽东思想≠毛泽东晚年错误"）</td></tr>
+      <tr><td>重点</td><td>公式推导</td><td>核心观点+理论意义</td></tr>
+    </table>
+    <br>
+    <strong>怎么实现的：</strong>新建了 <code>system_reader_liberal_arts.md</code>（文科版提取指令）和 <code>system_verifier_liberal_arts.md</code>（文科版核查指令）。宿主读完教材自动判断用哪套。
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-number">3</span>图片剥离 <span class="badge badge-enhance">优化</span></div>
+
+  <div class="problem">
+    <strong>以前的问题：</strong>Word 文档里的图片会被转成一长串 base64 代码塞进笔记里。毛泽东思想概论 37 页提取出来 590KB，大部分是图片编码，笔记臃肿，AI 读起来也慢。
+  </div>
+
+  <div class="solution">
+    <strong>现在的改进：</strong>加 <code>--strip-images</code> 选项，图片存成独立文件（images/img_001.png），笔记里只放一个引用链接。
+  </div>
+
+  <div class="example">
+    <strong>大白话：</strong>以前把每张照片都打印塞进笔记本，本子鼓鼓囊囊。现在照片单独存相册，笔记本里只写"见相册第1张"。
+    <br><br>
+    <strong>怎么实现的：</strong>
+    <ul>
+      <li>扫描 markdown 里的 <code>![](data:image/jpeg;base64,...)</code></li>
+      <li>把 base64 解码成图片文件，存到 <code>images/</code> 目录</li>
+      <li>替换为 <code>![](images/img_001.png)</code></li>
+    </ul>
+    <strong>额外发现：</strong>markitdown 其实把图片截断成了 <code>base64...</code> 占位符（没有真实数据），所以还加了清理这些无用占位符的逻辑。
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-number">4</span>断点续传 <span class="badge badge-enhance">优化</span></div>
+
+  <div class="problem">
+    <strong>以前的问题：</strong>270 页大教材跑 5-pass 要 2 小时。跑到第 8 段中断了（网络断了/电脑关了），下次得从头再来。
+  </div>
+
+  <div class="solution">
+    <strong>现在的改进：</strong>每完成一段就存档（.checkpoint/ 目录）。中断后重跑，自动跳过已完成的段，从断点继续。
+  </div>
+
+  <div class="example">
+    <strong>大白话：</strong>就像游戏存档——打到第 8 关存档，死了不用从第 1 关重来，从第 8 关继续。
+    <br><br>
+    <strong>怎么实现的：</strong>
+    <ul>
+      <li>Pass 1 完成后存 <code>.checkpoint/segmentation_map.json</code>（分段方案）</li>
+      <li>Pass 2 每完成一段存 <code>.checkpoint/notes_seg-001.json</code>（第1段笔记）</li>
+      <li>重跑时 <code>run_pipeline.py</code> 检查这些文件，跳过已完成的</li>
+    </ul>
+    <strong>用户不用做任何事</strong>，脚本自动检测。
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-number">5</span>OCR 纠错 <span class="badge badge-enhance">优化</span></div>
+
+  <div class="problem">
+    <strong>以前的问题：</strong>扫描版 PDF（拍照版教材）经过 OCR 识别后，常见汉字会认错——"已"认成"巳"、"未"认成"末"、"千"认成"干"。读起来别扭，AI 提取知识点也会被误导。
+  </div>
+
+  <div class="solution">
+    <strong>现在的改进：</strong>加 <code>--ocr-correct</code> 选项，自动修正常见 OCR 误判。
+  </div>
+
+  <div class="example">
+    <strong>大白话：</strong>扫描版教材就像拍照识字，会认错字。这个功能相当于一个"校对员"，自动把"巳知"改回"已知"。
+    <br><br>
+    <strong>怎么实现的：</strong>
+    <ul>
+      <li>建了一个常见 OCR 错误字典（巳→已、末→未 等）</li>
+      <li>上下文校验：数字上下文的"干"→"千"（如"5干3百"→"5千3百"）</li>
+      <li>保守纠错——宁可漏改不可错改（错改比不改更误事）</li>
+    </ul>
+    <strong>只对扫描版 PDF 有效</strong>，原生电子版 PDF 不需要。
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-number">6</span>公式增强 <span class="badge badge-enhance">优化</span></div>
+
+  <div class="problem">
+    <strong>以前的问题：</strong>docling 提取 PDF 时，公式显示为 <code>&lt;!-- formula-not-decoded --&gt;</code>（公式未解码）。AI 不知道哪页有公式、有几个，只能盲猜重建。
+  </div>
+
+  <div class="solution">
+    <strong>现在的改进：</strong>新增 <code>enhance_formulas.py</code> 脚本，扫描所有公式占位符，告诉 AI 哪页有公式、有几个。可选装 pix2tex 做公式 OCR。
+  </div>
+
+  <div class="example">
+    <strong>大白话：</strong>以前 AI 看 PDF 笔记，公式位置都是空白（"这里有个公式但没识别"）。现在给它一份清单："第3页有2个公式、第5页有1个公式"，AI 提取时心里有数。
+    <br><br>
+    <strong>怎么实现的：</strong>
+    <ul>
+      <li>扫描 markdown 里所有 <code>&lt;!-- formula-not-decoded --&gt;</code></li>
+      <li>按页码统计，输出 <code>formula_hints.json</code></li>
+      <li>可选：装 pix2tex 后，把 PDF 页面渲染成图片，用 AI 识别公式转 LaTeX</li>
+    </ul>
+    <strong>默认不需要装 pix2tex</strong>——AI 基于上下文重建公式已经够用（实测同济高数 73 个公式全部成功重建）。
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-number">7</span>5-pass 自动化 <span class="badge badge-enhance">优化</span></div>
+
+  <div class="problem">
+    <strong>以前的问题：</strong>跑完整流程要手动一步步来：先 extract，再手动读 prompts 跑 5-pass，最后再 generate。容易漏步骤。
+  </div>
+
+  <div class="solution">
+    <strong>现在的改进：</strong>新增 <code>run_pipeline.py</code>，一条命令编排全流程——自动提取、自动识别文理科、打印 5-pass 指引、检测断点、最后自动生成 HTML。
+  </div>
+
+  <div class="example">
+    <strong>大白话：</strong>以前要手动切菜、开火、翻炒、装盘。现在按一个按钮，它告诉你"先切菜（Pass 1）→ 再开火（Pass 2）→ ..."，做完一步自动进入下一步。
+    <br><br>
+    <strong>怎么实现的：</strong>
+    <ul>
+      <li>Phase 0：调 <code>controller.py extract</code> 提取文档</li>
+      <li>自动检测模式（文科/理科）</li>
+      <li>检查 <code>.checkpoint/</code> 断点</li>
+      <li>打印详细的 Pass 1-5 指引（读哪个 prompt、输出什么）</li>
+      <li>检测到 <code>knowledge.json</code> 后自动生成 HTML</li>
+    </ul>
+    <strong>用法：</strong>
+    <pre><code>python scripts/run_pipeline.py textbook.pdf           # 开始流程
+python scripts/run_pipeline.py textbook.pdf --generate-only  # 5-pass 完了，生成 HTML</code></pre>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-number">8</span>代码质量优化 <span class="badge badge-enhance">优化</span></div>
+
+  <div class="solution">
+    除了功能，还做了一轮代码审查和重构：
+  </div>
+  <div class="example">
+    <ul>
+      <li><strong>去重</strong>：extractors.py 三个提取函数 90% 重复，提取共享 helper <code>_extract_text_based</code></li>
+      <li><strong>修 bug</strong>：同名不同格式文件（a.docx + a.md）合并时互相覆盖 → 子目录改为 <code>stem (ext)</code></li>
+      <li><strong>文档同步</strong>：README 从"17 个测试"更新到"74 个测试"，补全多格式说明</li>
+      <li><strong>测试覆盖</strong>：从 0 个测试 → 74 个单元测试（含 PDF 回归、GBK 编码、OCR 纠错、流水线等）</li>
+      <li><strong>eval 完善</strong>：从 3 个 eval → 9 个（含混合格式、负向触发——小说总结不应该触发）</li>
+      <li><strong>目录修正</strong>：html-template.md 的 TOC 行号过时（说 1493 行实际 2507 行）→ 已修正</li>
+    </ul>
+  </div>
+</div>
+
+<div class="summary">
+  <h3 style="margin-top:0;">📊 总结</h3>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px;"><strong>支持格式</strong></td>
+      <td>PDF + Word + TXT + Markdown（4 种）</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px;"><strong>教材类型</strong></td>
+      <td>理工科 + 文科（自动识别）</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px;"><strong>单元测试</strong></td>
+      <td>74 个，全部通过</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px;"><strong>eval 用例</strong></td>
+      <td>9 个（含负向触发）</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px;"><strong>脚本数</strong></td>
+      <td>6 个（controller / extractors / generate_html / chapter_selector / run_pipeline / enhance_formulas / ocr_corrector）</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;"><strong>用户操作</strong></td>
+      <td><strong>只需上传教材，其余全自动</strong></td>
+    </tr>
+  </table>
+</div>
+
+<script>
+function toggleTheme() {
+  const body = document.body;
+  const current = body.getAttribute('data-theme');
+  const next = current === 'light' ? 'dark' : 'light';
+  body.setAttribute('data-theme', next);
+  document.querySelector('.theme-toggle').textContent = next === 'light' ? '🌙' : '☀️';
+  localStorage.setItem('theme', next);
+}
+const saved = localStorage.getItem('theme');
+if (saved) {
+  document.body.setAttribute('data-theme', saved);
+  document.querySelector('.theme-toggle').textContent = saved === 'light' ? '🌙' : '☀️';
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,50 @@
+# exam-review-helper 配置文件
+#
+# 用法：
+#   1. 不传 --config 时，controller.py 会读此文件（若存在）
+#   2. python controller.py extract book.pdf --config my-config.yaml  # 用自定义配置
+#   3. python controller.py init  # 生成此文件的副本到当前目录
+#
+# 所有字段都有默认值，删掉某字段即用默认。不需要的字段可以删掉或注释掉。
+
+# === 提取参数 ===
+extraction:
+  min_page_chars: 1500            # 合成页码最小字符数（DOCX/TXT/MD）
+  max_page_chars_multiplier: 4    # 最大页码 = min_page_chars * multiplier（超长 section 按段落切）
+  chunk_size: 50                  # PDF 分块默认页数
+  auto_chunk_size_mb: 50          # PDF >50MB 自动启用分块
+  auto_chunk_pages: 100           # PDF >100页 自动启用分块
+
+  # 提取缓存（重跑相同文件秒级返回）
+  cache_enabled: true
+  cache_dir_name: ".cache"        # 缓存目录名（在 Review - <stem>/ 下）
+
+  # 重试逻辑
+  max_retries: 1                  # 提取失败重试次数
+  retry_chunk_shrink: 2           # 重试时 chunk_size 除以此数（50→25→12）
+
+  # 安全限制（防恶意文件）
+  max_pdf_size_mb: 2048           # PDF 最大 2GB（超过拒绝）
+  max_docx_size_mb: 100           # DOCX 最大 100MB（超过拒绝）
+  max_txt_size_mb: 50             # TXT 最大 50MB
+  max_md_size_mb: 50              # MD 最大 50MB
+  max_base64_image_mb: 50         # 单张 base64 图片最大 50MB
+
+# === HTML 生成参数 ===
+html:
+  template_path: "templates/default.html"  # HTML 模板路径（相对于 skill 根目录）
+  default_format: "html"                   # 默认输出格式：html | md | json
+
+# === 5-pass 阈值 ===
+thresholds:
+  stem_concept_min: 10            # 理工科章级概念下限
+  liberal_concept_min: 8          # 文科章级概念下限
+  segment_concept_min: 5          # 段级概念下限（Pass 2 单段）
+  pitfall_min: 3                  # 易错点/易混淆点下限
+  liberal_connection_min: 2       # 文科 connections 下限
+  related_to_max_isolated_pct: 30 # concepts 无 related_to 的最大百分比
+
+# === 输出/日志 ===
+output:
+  verbose: false                  # 详细日志（打印每步细节）
+  quiet: false                    # 静默模式（只打印错误和最终结果）
