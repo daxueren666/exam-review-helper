@@ -24,7 +24,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
+          # 装测试需要的轻量依赖：
+          # - pytest: 测试框架
+          # - PyYAML: config.py 加载 config.yaml
+          # - charset-normalizer: TXT/MD 编码检测（extractors.py 用）
+          # - markitdown[docx]: DOCX 提取（部分测试需要真实调用）
+          # 不装 docling/PyMuPDF/transformers/python-pptx（重依赖，测试里都是延迟 import + monkeypatch）
+          pip install pytest pytest-cov PyYAML charset-normalizer 'markitdown[docx]'
 
       - name: Run unit tests
         run: pytest tests/ -v
