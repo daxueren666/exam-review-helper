@@ -1,9 +1,6 @@
 ---
 name: exam-review-helper
-description: 期末考试复习助手 - 将 PDF/Word/TXT/Markdown 教材浓缩为精华知识点并生成交互式 HTML 复习文档。适用场景：理工科教材（数学、物理、计算机、化学、工程等）与文科教材（政治、哲学、历史、法学、教育学等），自动识别模式，原生支持扫描版 PDF、Word 讲义、纯文本笔记、Markdown 教材。当用户说"复习教材"、"整理知识点"、"期末复习"、"考试准备"、"浓缩教材"、"提取重点"、"帮我复习"、"整理笔记"，或上传 PDF/Word/TXT/MD 学习资料并问"帮我看看这个"、"总结一下"时，主动使用此 skill，即使用户没明说"复习"。
-compatibility:
-  tools: [Bash, Read, Write, Edit, Glob, Grep]
-  host_agents: [any conversational AI agent with tool use]
+description: 期末考试复习助手 - 将 PDF/Word/TXT/Markdown 教材浓缩为精华知识点并生成交互式 HTML 复习文档。适用场景：理工科教材（数学/物理/计算机/化学/工程）与文科教材（政治/哲学/历史/法学/教育学），自动识别模式。原生支持扫描版 PDF（含 OCR）、Word 讲义、纯文本笔记、Markdown 教材。当用户说"帮我复习这个"、"整理知识点"、"期末复习"，或上传学习资料问"总结一下"时主动使用此 skill，即使用户没明说"复习"。
 ---
 
 # 期末考试复习助手
