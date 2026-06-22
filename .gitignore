@@ -38,6 +38,13 @@ htmlcov/
 .checkpoints/
 quality_reports/
 Review - */
+Review - *.html
+Review - *.md
+Review - *.json
+*_review.html
+*_review.md
+*_review.json
+test_*.json
 *_error.log
 *_profile.json
 
