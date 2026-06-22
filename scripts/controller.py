@@ -579,7 +579,6 @@ def extract(source_path: str, output_dir: str = None,
     # === 保存缓存 ===
     if use_cache and cfg.cache_enabled() and result.get("status") in ("success", "partial"):
         try:
-            from cache import save_cache
             save_cache(output_dir, file_hash, result, cfg.cache_dir_name())
         except Exception as e:
             # 缓存失败不影响主流程，仅提示
