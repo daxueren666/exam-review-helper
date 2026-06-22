@@ -15,7 +15,7 @@
 4. **生成单个交互式 HTML**（MathJax 公式渲染 + 暗黑模式 + 侧边导航 + 错题本 + 进度追踪）
 5. **缓存加速**：相同文件二次提取秒级返回（按内容 hash 缓存）
 
-整个流程**不需要 API key**——Claude Code 本身就是 LLM，skill 直接对话执行 5-pass。
+整个流程**不需要额外配 API key**——5-pass 由宿主 agent（Claude Code / Codex CLI）调用的 LLM 执行，用你登录宿主时的认证。
 
 ## 快速开始
 
