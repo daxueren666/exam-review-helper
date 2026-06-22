@@ -21,24 +21,38 @@
 
 ### 1. 安装 skill
 
-把本仓库 clone 到 Claude Code 的 skills 目录：
+本 skill 同时支持 **Claude Code** 和 **Codex CLI**——两者都遵循 open agent skills 标准（SKILL.md 格式相同），只是发现路径不同。按你用的平台选一个：
+
+**Claude Code 用户：**
 
 ```bash
+# macOS / Linux
 git clone https://github.com/daxueren666/exam-review-helper.git \
   ~/.claude/skills/exam-review-helper
-```
 
-或在 Windows：
-
-```bash
+# Windows
 git clone https://github.com/daxueren666/exam-review-helper.git \
   %USERPROFILE%\.claude\skills\exam-review-helper
 ```
 
+**Codex CLI 用户：**
+
+```bash
+# macOS / Linux
+git clone https://github.com/daxueren666/exam-review-helper.git \
+  ~/.agents/skills/exam-review-helper
+
+# Windows
+git clone https://github.com/daxueren666/exam-review-helper.git \
+  %USERPROFILE%\.agents\skills\exam-review-helper
+```
+
+两个平台都用同一个仓库，SKILL.md 不用改——`name` + `description` 字段两边都认，说"帮我复习"会自动触发。
+
 ### 2. 安装 Python 依赖
 
 ```bash
-cd ~/.claude/skills/exam-review-helper
+cd ~/.claude/skills/exam-review-helper   # 或 ~/.agents/skills/exam-review-helper
 pip install -r requirements.txt
 python scripts/controller.py init   # 检查依赖 + 配置文件 + 模板
 ```
