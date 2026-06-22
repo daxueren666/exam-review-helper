@@ -1,99 +1,9 @@
-# HTML 模板
-
-exam-review-helper 生成的复习 HTML 模板。
-
-- 主布局：CSS Grid（sidebar + main）
-- 字体：中文优先（PingFang SC / Microsoft YaHei）
-- 暗黑模式：CSS variables + localStorage 持久化
-- 公式：MathJax + 独立可滚动卡片
-- 响应式：mobile 下 sidebar 折叠为抽屉
-
-## 目录
-
-> 本文件共 2507 行（其中 HTML 模板代码 2418 行，行 89-2507）。Claude 不需要全读，按需跳转。
-> 模板代码结构：`<style>` CSS（行 108-1472）+ `<body>` HTML 结构（行 1474-1553）+ `<script>` JS（行 1554-2504）。
-
-### 1. CSS 部分（行 108-1472，在 `<style>` 标签内）
-- **1.1 设计 token**（`:root` + `[data-theme="dark"]`）
-  - 主色：`--primary` / `--accent`
-  - 背景：`--bg` / `--bg-card` / `--bg-soft`
-  - 文字：`--text` / `--text-soft`
-  - 语义色：`--diff-*` / `--status-*`（难度 + 状态）
-  - 阴影：`--shadow` / `--shadow-hover` / `--shadow-card`
-- **1.2 基础布局**
-  - `body` / `.app`（CSS Grid）/ `.header`
-- **1.3 侧边栏**
-  - `.sidebar` / `.nav-list` / `.nav-item`（带章节 checkbox）
-  - `.progress-stats` / `.progress-bar`
-- **1.4 主区域**
-  - `.chapter` / `.chapter-header` / `.chapter-title`
-  - `.chapter-summary` / `.section-label` / `.deep-only`
-- **1.5 卡片系统**
-  - `.card-grid` / `.card`（含 hover 浮起 + 阴影）
-  - `.card.importance-core/major/minor`（左侧颜色编码）
-  - `.card.mastered`（已掌握样式）
-- **1.6 难度标签**
-  - `.diff-tag.diff-basic/intermediate/advanced`
-- **1.7 状态按钮**（3 态）
-  - `.status-btn` + `.status-btn[data-status].active`
-- **1.8 卡片状态**
-  - `.card.status-mastered/review/hard`（左边框颜色）
-- **1.9 banner 系统**
-  - `.filter-banner`（蓝色筛选提示）
-- **1.10 学习模式**
-  - `.mode-switcher` / `.mode-btn`（速通 / 标准 / 深度）
-- **1.11 响应式**（@media）
-
-### 2. HTML 结构（行 1474-1553，在 `<body>` 标签内）
-- `<header>` 含书名 + mode-switcher + theme-toggle
-- `<div class="top-progress">` sticky 进度条
-- `<aside class="sidebar">` 含搜索 + 章节导航（带每章进度） + 全局复习进度
-- `<main class="main">` 内容区
-- `<div class="flashcard-overlay">` 卡片模式 modal
-
-### 3. JS 部分（行 1554-2504，在 `<script>` 标签内）
-- **3.1 数据加载** —— `<script id="knowledge-data">` JSON 解析
-- **3.2 工具函数** —— `escapeHtml` / `pageTag` / `wrapFormulaDelimiters`
-- **3.3 渲染函数**：
-  - `renderConcepts`（含 difficulty + boundary + variation + status 按钮）
-  - `renderFormulas` / `renderPitfalls` / `renderExamples` / `renderConnections`
-- **3.4 状态管理**：
-  - `conceptStatus`（mastered/review/hard 三态）
-  - `migrateMastered`（兼容旧 mastered Set）
-  - `setConceptStatus` + `saveConceptStatus`
-- **3.5 事件委托**：
-  - `[data-action="concept-status"]` → setConceptStatus
-- **3.6 进度更新**：
-  - `updateProgress`（按概念数）
-  - `updateChapterProgress`（按章数）
-  - `renderMistakeBook`（错题本动态渲染）
-- **3.7 章节筛选**：
-  - `.nav-chapter-checkbox` 切换章节显隐
-  - "全选/全不选"链接
-- **3.8 学习模式**：`setMode('quick'/'standard'/'deep')`
-- **3.9 历史进度续学**：localStorage 记录 scroll 位置
-- **3.10 主题切换**：data-theme="dark" 切换
-- **3.11 卡片模式（背单词）**：openFlashcard / fcNext / fcPrev / closeFlashcard
-- **3.12 每章进度**：updatePerChapterProgress（侧边栏 nav-chapter-progress）
-- **3.13 智能虚拟节**：clusterVirtualSections（按 page_range 自动切 3-5 节）
-
-### 4. 关键约定（必读）
-
-- **数据注入**：`__DATA_PLACEHOLDER__` 被 `generate_html.py` 替换为 JSON
-- **暗黑模式**：所有颜色必须用 `var(--xxx)`，禁止硬编码
-- **状态系统**：concept 状态存 localStorage，跨会话保留
-- **章节筛选**：用户选择存 `chapter-visibility`，下次打开恢复
-
-
-`generate_html.py` 通过正则提取本文档的 ` ```html ` 代码块作为模板，并把整份知识点 JSON 通过 `__DATA_PLACEHOLDER__` 注入到 `<script id="knowledge-data">` 中。
-
-```html
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>期末复习笔记 - [教材名称]</title>
+<title>期末复习笔记 - 测试</title>
 <script>
     MathJax = {
         loader: { load: ['[tex]/mhchem'] },
@@ -1477,7 +1387,7 @@ button:focus-visible, .mode-btn:focus-visible {
     <header class="header">
         <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0; flex: 1;">
             <button class="btn-icon mobile-toggle" id="sidebar-toggle" aria-label="切换目录">☰</button>
-            <div class="header-title" id="book-title-display">[教材名称]</div>
+            <div class="header-title" id="book-title-display">测试</div>
         </div>
         <div class="header-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <div class="mode-switcher" id="mode-switcher">
@@ -1551,7 +1461,24 @@ button:focus-visible, .mode-btn:focus-visible {
     </div>
 </div>
 
-<script id="knowledge-data" type="application/json">__DATA_PLACEHOLDER__</script>
+<script id="knowledge-data" type="application/json">{
+  "skill_name": "exam-review-helper",
+  "source": "测试",
+  "chapters": [
+    {
+      "chapter_title": "第1章",
+      "page_range": "1-5",
+      "concepts": [
+        {
+          "name": "概念A",
+          "importance": "high",
+          "page": 1,
+          "definition": "定义A"
+        }
+      ]
+    }
+  ]
+}</script>
 <script>
 (function() {
   try {
@@ -1585,7 +1512,7 @@ button:focus-visible, .mode-btn:focus-visible {
         }
     }
 
-    document.title = document.title.replace('[教材名称]', data.source || '复习笔记');
+    document.title = document.title.replace('测试', data.source || '复习笔记');
     document.getElementById('book-title-display').textContent = data.source || '复习笔记';
 
     const mastered = new Set(safeLSJSON('mastered-concepts', []));
@@ -2490,7 +2417,7 @@ button:focus-visible, .mode-btn:focus-visible {
 
     const ts = document.createElement('div');
     ts.style.cssText = 'text-align:center;color:var(--text-soft);font-size:0.75rem;padding:2rem 0;border-top:1px solid var(--border);margin-top:3rem';
-    ts.textContent = '生成时间: [时间戳]';
+    ts.textContent = '生成时间: 2026-06-22 13:26';
     main.appendChild(ts);
   } catch (err) {
     console.error('[exam-review-helper] 渲染失败:', err);
@@ -2505,4 +2432,3 @@ button:focus-visible, .mode-btn:focus-visible {
 </script>
 </body>
 </html>
-```

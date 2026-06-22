@@ -45,17 +45,8 @@ def _sanitize_markdown(text: str) -> str:
     return text
 
 
-def extract_html_from_markdown(md_path: Path) -> str:
-    """从 markdown 文件中提取 HTML 模板（向后兼容，优先用 templates/default.html）。"""
-    content = md_path.read_text(encoding="utf-8")
-    match = re.search(r'```html\n(.*?)\n```', content, re.DOTALL)
-    if match:
-        return match.group(1)
-    raise ValueError(f"未找到 HTML 模板在 {md_path}")
-
-
 def load_template(template_path: Optional[str] = None) -> str:
-    """加载 HTML 模板。优先级：--template 参数 > templates/default.html > references/html-template.md。"""
+    """加载 HTML 模板。优先级：--template 参数 > templates/default.html。"""
     skill_root = Path(__file__).parent.parent
 
     if template_path:
@@ -67,17 +58,12 @@ def load_template(template_path: Optional[str] = None) -> str:
             return p.read_text(encoding="utf-8")
         raise ValueError(f"模板文件不存在: {p}")
 
-    # 优先用外置的 templates/default.html
-    external = skill_root / "templates" / "default.html"
-    if external.exists():
-        return external.read_text(encoding="utf-8")
+    # 默认模板
+    default = skill_root / "templates" / "default.html"
+    if default.exists():
+        return default.read_text(encoding="utf-8")
 
-    # 向后兼容：从 html-template.md 提取
-    md_path = skill_root / "references" / "html-template.md"
-    if md_path.exists():
-        return extract_html_from_markdown(md_path)
-
-    raise FileNotFoundError("未找到 HTML 模板（templates/default.html 或 references/html-template.md）")
+    raise FileNotFoundError(f"未找到 HTML 模板: {default}")
 
 
 def generate_html(

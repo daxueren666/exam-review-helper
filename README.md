@@ -189,8 +189,7 @@ exam-review-helper/
 ├── references/                    参考文档
 │   ├── multi-pass-workflow.md     工作流详细指令
 │   ├── multi-format-input.md      多格式输入说明
-│   ├── common-failure-modes.md    防偷懒清单 + Rationalization Table
-│   └── html-template.md           HTML 模板（向后兼容备份）
+│   └── common-failure-modes.md    防偷懒清单 + Rationalization Table
 │
 ├── scripts/                       确定性脚本
 │   ├── controller.py              extract / generate / validate / init 命令

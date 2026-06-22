@@ -786,7 +786,7 @@ def _cmd_init():
     if template_path.exists():
         print(f"  ✅ templates/default.html 已存在")
     else:
-        print(f"  ⚠️  templates/default.html 不存在（将回退到 references/html-template.md）")
+        print(f"  ⚠️  templates/default.html 不存在（generate 命令将失败）")
 
     # 4. 总结
     print("\n=== 总结 ===")
