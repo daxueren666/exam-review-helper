@@ -113,8 +113,9 @@ def generate_html(
 
     # 替换占位符
     # 防 </script> 注入：JSON 中的 </ 转 <\/，浏览器 JSON.parse 自动还原
+    # 防 <!-- 注入：HTML 注释开标签可触发老浏览器解析 quirks，转成 <\!--
     json_str = json.dumps(knowledge_data, ensure_ascii=False, indent=2)
-    json_str = json_str.replace("</", "<\\/")
+    json_str = json_str.replace("</", "<\\/").replace("<!--", "<\\!--")
 
     html_content = template.replace("__DATA_PLACEHOLDER__", json_str)
     html_content = html_content.replace("[教材名称]", book_title_escaped)

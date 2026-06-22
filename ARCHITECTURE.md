@@ -1,6 +1,6 @@
 # 架构文档
 
-本 skill 把教材（PDF/DOCX/TXT/MD）变成考前复习 HTML。整体由 7 个 Python 脚本 + 一组 prompts + 宿主 LLM 的 5-pass 工作流组成。脚本只承担**确定性任务**（提取、校验、渲染），LLM 推理由宿主对话执行。
+本 skill 把教材（PDF/DOCX/TXT/MD）变成考前复习 HTML。整体由 10 个 Python 脚本 + 一组 prompts + 宿主 LLM 的 5-pass 工作流组成。脚本只承担**确定性任务**（提取、校验、渲染），LLM 推理由宿主对话执行。
 
 ## 数据流
 

@@ -19,6 +19,7 @@
 - 面积→百积（极罕见）
 """
 import re
+import sys
 from typing import List, Tuple
 
 
@@ -83,9 +84,9 @@ def correct_ocr_errors(text: str, verbose: bool = False) -> Tuple[str, List[str]
             result = new_result
 
     if verbose and corrections:
-        print(f"[OCR Corrector] 纠正 {len(corrections)} 类错误：", file=__import__('sys').stderr)
+        print(f"[OCR Corrector] 纠正 {len(corrections)} 类错误：", file=sys.stderr)
         for c in corrections:
-            print(f"  - {c}", file=__import__('sys').stderr)
+            print(f"  - {c}", file=sys.stderr)
 
     return result, corrections
 

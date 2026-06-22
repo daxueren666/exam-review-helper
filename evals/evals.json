@@ -31,15 +31,15 @@
         {
           "name": "knowledge_json_created",
           "type": "json_field_equals",
-          "path": "Review - 高等数学-第八版-上册/knowledge.json",
-          "field": "skill_name",
-          "equals": "exam-review-helper",
+          "path": "Review - 高等数学-第八版-上册/高等数学-第八版-上册_knowledge.json",
+          "field": "source",
+          "equals": "高等数学-第八版-上册",
           "env_specific": true
         },
         {
           "name": "html_file_created",
           "type": "file_contains",
-          "path": "Review - 高等数学-第八版-上册/Review.html",
+          "path": "Review - 高等数学-第八版-上册/Review - 高等数学-第八版-上册.html",
           "contains": "MathJax",
           "env_specific": true
         }
@@ -61,7 +61,7 @@
         {
           "name": "knowledge_json_valid",
           "type": "file_exists",
-          "path": "Review - 高等数学-第八版-上册/knowledge.json",
+          "path": "Review - 高等数学-第八版-上册/高等数学-第八版-上册_knowledge.json",
           "nonempty": true,
           "env_specific": true
         },
@@ -76,7 +76,7 @@
         {
           "name": "html_file_created",
           "type": "file_contains",
-          "path": "Review - 高等数学-第八版-上册/Review.html",
+          "path": "Review - 高等数学-第八版-上册/Review - 高等数学-第八版-上册.html",
           "contains": "MathJax",
           "env_specific": true
         }
@@ -92,28 +92,28 @@
         {
           "name": "search_functionality",
           "type": "file_contains",
-          "path": "Review - extracted_content/Review.html",
+          "path": "Review - extracted_content/Review - extracted_content.html",
           "contains": "searchKnowledge",
           "env_specific": true
         },
         {
           "name": "note_functionality",
           "type": "file_contains",
-          "path": "Review - extracted_content/Review.html",
+          "path": "Review - extracted_content/Review - extracted_content.html",
           "contains": "saveNote",
           "env_specific": true
         },
         {
           "name": "progress_tracking",
           "type": "file_contains",
-          "path": "Review - extracted_content/Review.html",
+          "path": "Review - extracted_content/Review - extracted_content.html",
           "contains": "updateProgress",
           "env_specific": true
         },
         {
           "name": "theme_toggle",
           "type": "file_contains",
-          "path": "Review - extracted_content/Review.html",
+          "path": "Review - extracted_content/Review - extracted_content.html",
           "contains": "toggleTheme",
           "env_specific": true
         }
@@ -155,7 +155,7 @@
         {
           "name": "html_file_created",
           "type": "file_contains",
-          "path": "Review - sample/Review.html",
+          "path": "Review - sample/Review - sample.html",
           "contains": "MathJax"
         }
       ]
@@ -194,7 +194,7 @@
         {
           "name": "html_file_created",
           "type": "file_contains",
-          "path": "Review - sample_gbk/Review.html",
+          "path": "Review - sample_gbk/Review - sample_gbk.html",
           "contains": "MathJax"
         }
       ]
@@ -226,7 +226,7 @@
         {
           "name": "html_file_created",
           "type": "file_contains",
-          "path": "Review - sample/Review.html",
+          "path": "Review - sample/Review - sample.html",
           "contains": "MathJax"
         }
       ]
@@ -259,7 +259,7 @@
         {
           "name": "html_file_created",
           "type": "file_contains",
-          "path": "Review - combined/Review.html",
+          "path": "Review - combined/Review - combined.html",
           "contains": "MathJax"
         }
       ]
