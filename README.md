@@ -1,5 +1,7 @@
 # Exam Review Helper
 
+![version](https://img.shields.io/github/v/release/daxueren666/exam-review-helper) ![license](https://img.shields.io/github/license/daxueren666/exam-review-helper) ![stars](https://img.shields.io/github/stars/daxueren666/exam-review-helper)
+
 > 把 PDF / Word / TXT / Markdown 教材浓缩成交互式 HTML 复习文档的 Claude Code / Codex CLI Skill。
 > 自动识别文科/理工科，5-pass 深度提取，原生支持扫描版 PDF OCR。
 
