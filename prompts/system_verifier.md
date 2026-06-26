@@ -26,7 +26,7 @@
 6. **page 字段错**：随机抽 5-10 个 concept，对照 `extracted_content.md` 中的 `[PAGE N]` 标记核查页码（PDF = 物理页；DOCX/TXT/MD = 合成页段，按 H1/H2 切分）
 7. **公式 unicode**：latex 含 √、≤、∈ 等 unicode（应用 `\sqrt`、`\leq`）
 8. **易错点空泛**："注意定义域" 这种泛泛表述，没有具体计算错误示例
-9. **核心概念缺 `boundary` 或 `variation`**（仅深度模式）
+9. **核心概念缺 `boundary`、`variation` 或 `difficulty`**（仅深度模式）。`difficulty` 必须是 `"基础" | "进阶" | "高难"` 之一，缺失或取值非法 = 偷懒
 
 ### 低严重性（仅记录，不影响 verdict）
 

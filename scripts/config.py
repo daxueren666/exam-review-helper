@@ -28,7 +28,7 @@ _DEFAULTS = {
         "auto_chunk_pages": 100,
         "cache_enabled": True,
         "cache_dir_name": ".cache",
-        "max_retries": 1,
+        "max_retries": 3,
         "retry_chunk_shrink": 2,
         "max_pdf_size_mb": 2048,
         "max_docx_size_mb": 100,
@@ -94,7 +94,7 @@ class Config:
         return self.get("extraction.cache_dir_name", ".cache")
 
     def max_retries(self) -> int:
-        return self.get("extraction.max_retries", 1)
+        return self.get("extraction.max_retries", 3)
 
     def retry_chunk_shrink(self) -> int:
         return self.get("extraction.retry_chunk_shrink", 2)

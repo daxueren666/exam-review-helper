@@ -34,7 +34,7 @@
 6. **page 字段错**：随机抽 5-10 个 concept，对照 `extracted_content.md` 中的 `[PAGE N]` 标记核查页码（PDF = 物理页；DOCX/TXT/MD = 合成页段）
 7. **概念辨析空泛**：pitfalls 是"注意区别"、"容易混淆"这种废话，没有具体辨析
 8. **definition 字面化**：只复述概念名字面意思，未点出核心观点
-9. **核心概念缺 `boundary` 或 `variation`**
+9. **核心概念缺 `boundary`、`variation` 或 `difficulty`**。`difficulty` 必须是 `"基础" | "进阶" | "高难"` 之一
 
 ### 低严重性（仅记录，不影响 verdict）
 

@@ -27,6 +27,7 @@ import json
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
+import re
 
 # Windows GBK 控制台兼容：强制 stdout/stderr 用 UTF-8
 if sys.platform == "win32":
@@ -50,7 +51,6 @@ def fix_heading_hierarchy(md: str) -> str:
     - "## 1.xxx" / "## 1.1 xxx" → "###" (三级)
     - 其他 "##" 保持不变
     """
-    import re
 
     cn_num = r'[一二三四五六七八九十百千]+'
     # 顶级标题：一、二、三 / 第一章 / 第1章 / 第N节 / 第N讲 / Chapter N
@@ -226,7 +226,36 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None,
         json.dump(doc_dict, f, ensure_ascii=False, indent=2)
 
     pages = len(result.document.pages) if hasattr(result.document, "pages") else 0
-    print(f"[Controller] 提取完成: {pages} 页 → {markdown_path}", file=sys.stderr)
+
+    # 检测 docling 内部错误（如 std::bad_alloc）导致的部分提取
+    # docling 的 bad_alloc 是 C++ 层警告，只打印到 stderr，不抛 Python 异常
+    # result.document.pages 可能包含空页（bad_alloc 失败的页仍在 dict 里）
+    # 所以用 markdown 实际 [PAGE N] 标记数检测，而不是 len(pages)
+    actual_pages = len(re.findall(r'^\[PAGE \d+\]', markdown, re.MULTILINE))
+    if page_range is not None:
+        expected_pages = page_range[1] - page_range[0] + 1
+    else:
+        expected_pages = _get_pdf_page_count(pdf_path)
+    if expected_pages > 0 and actual_pages < expected_pages:
+        missing = expected_pages - actual_pages
+        print(
+            f"[Controller] 警告：仅提取 {actual_pages}/{expected_pages} 页"
+            f"（{missing} 页失败，可能是 std::bad_alloc 内存错误）",
+            file=sys.stderr,
+        )
+        return {
+            "status": "error",
+            "message": (
+                f"docling 仅提取 {actual_pages}/{expected_pages} 页"
+                f"（{missing} 页失败，可能是 std::bad_alloc 内存错误）。"
+                f" 建议：用 --chunk-size 5 分块提取。"
+            ),
+            "pdf_path": str(pdf_path),
+            "pages": actual_pages,
+            "expected_pages": expected_pages,
+        }
+
+    print(f"[Controller] 提取完成: {actual_pages} 页 → {markdown_path}", file=sys.stderr)
 
     return {
         "status": "success",
@@ -561,7 +590,8 @@ def extract(source_path: str, output_dir: str = None,
     result = _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correct, cfg)
 
     # === 重试逻辑：PDF chunked 失败时减小 chunk_size 重试 ===
-    if result.get("status") == "error" and ext == ".pdf" and not no_chunk:
+    # error 或 partial（失败比例高）都触发重试
+    if result.get("status") in ("error", "partial") and ext == ".pdf" and not no_chunk:
         max_retries = cfg.max_retries()
         shrink = cfg.retry_chunk_shrink()
         for retry_i in range(max_retries):
@@ -573,8 +603,18 @@ def extract(source_path: str, output_dir: str = None,
                 file=sys.stderr,
             )
             result = _do_extract(path, output_dir, current_chunk, False, strip_images, ocr_correct, cfg)
-            if result.get("status") in ("success", "partial"):
+            status = result.get("status")
+            if status == "success":
                 break
+            if status == "partial":
+                # partial 时检查失败比例：失败 < 10% 可接受，否则继续重试更小 chunk
+                processed = result.get("pages_processed", 0)
+                failed = result.get("pages_failed", 0)
+                total = processed + failed
+                if total > 0 and failed / total < 0.1:
+                    print(f"[Controller] 接受 partial：{processed}/{total} 页成功（失败 {failed} 页 < 10%）", file=sys.stderr)
+                    break
+                # 失败多，继续重试
 
     # === 保存缓存 ===
     if use_cache and cfg.cache_enabled() and result.get("status") in ("success", "partial"):
@@ -870,7 +910,7 @@ def main():
     p_extract.add_argument(
         "--strip-images",
         action="store_true",
-        help="剥离 base64 内嵌图片为独立文件（DOCX 建议，可减小 markdown 体积 90%）",
+        help="剥离 base64 内嵌图片为独立文件（DOCX 建议，可减小 markdown 体积 90%%）",
     )
     p_extract.add_argument(
         "--ocr-correct",

@@ -59,6 +59,12 @@
     --mistake-book-title: #ea4335;
     --text-muted: #5f6368;
     --mode-switcher-bg: #f1f3f4;
+    /* Actor 配色系统（connections 按关联类型着色）*/
+    --actor-prerequisite: #3b82f6;
+    --actor-foundation: #8b5cf6;
+    --actor-leads-to: #10b981;
+    --actor-analogy: #f59e0b;
+    --actor-default: #64748b;
 }
 
 [data-theme="dark"] {
@@ -95,6 +101,12 @@
     --mistake-book-title: #f28b82;
     --text-muted: #9aa0a6;
     --mode-switcher-bg: #2d3a4f;
+    /* Actor 配色（dark 模式浅色版本）*/
+    --actor-prerequisite: #60a5fa;
+    --actor-foundation: #a78bfa;
+    --actor-leads-to: #34d399;
+    --actor-analogy: #fbbf24;
+    --actor-default: #94a3b8;
 }
 
 * {
@@ -439,6 +451,41 @@ body {
     height: 100%;
     background: var(--primary);
     transition: width 0.3s;
+}
+
+/* === Reveal animation (cards fade in on scroll) === */
+.card, .formula-block, .pitfall-card, .example-card {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.card.visible, .formula-block.visible, .pitfall-card.visible, .example-card.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+.card-grid .card.visible:nth-child(1) { transition-delay: 0ms; }
+.card-grid .card.visible:nth-child(2) { transition-delay: 60ms; }
+.card-grid .card.visible:nth-child(3) { transition-delay: 120ms; }
+.card-grid .card.visible:nth-child(4) { transition-delay: 180ms; }
+.card-grid .card.visible:nth-child(5) { transition-delay: 240ms; }
+.card-grid .card.visible:nth-child(6) { transition-delay: 300ms; }
+@media (prefers-reduced-motion: reduce) {
+    .card, .formula-block, .pitfall-card, .example-card {
+        opacity: 1 !important;
+        transform: none !important;
+    }
+}
+
+/* === Thin scroll progress bar (top 2px, scroll-linked) === */
+.scroll-progress-thin {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: var(--primary);
+    width: 0%;
+    z-index: 200;
+    transition: width 0.1s ease-out;
 }
 
 .main {
@@ -1286,6 +1333,37 @@ button:focus-visible, .mode-btn:focus-visible {
     border-bottom: none;
 }
 
+/* Actor 配色：connections 按关联类型着色 */
+.connections-list li.actor-prerequisite { border-left: 3px solid var(--actor-prerequisite); padding-left: 10px; }
+.connections-list li.actor-foundation { border-left: 3px solid var(--actor-foundation); padding-left: 10px; }
+.connections-list li.actor-leads-to { border-left: 3px solid var(--actor-leads-to); padding-left: 10px; }
+.connections-list li.actor-analogy { border-left: 3px solid var(--actor-analogy); padding-left: 10px; }
+.connections-list li.actor-default { border-left: 3px solid var(--actor-default); padding-left: 10px; }
+
+/* Glossary tooltip（术语悬浮卡）*/
+.glossary-term {
+    border-bottom: 1px dashed var(--primary);
+    cursor: help;
+    color: var(--primary);
+}
+.glossary-tooltip {
+    position: fixed;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    color: var(--text);
+    max-width: 320px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 300;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    line-height: 1.5;
+}
+.glossary-tooltip.visible { opacity: 1; }
+
 .empty-state {
     text-align: center;
     padding: 3rem 1rem;
@@ -1383,6 +1461,7 @@ button:focus-visible, .mode-btn:focus-visible {
 </style>
 </head>
 <body>
+<div class="scroll-progress-thin" id="scroll-progress-thin"></div>
 <div class="app">
     <header class="header">
         <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0; flex: 1;">
@@ -1620,11 +1699,11 @@ button:focus-visible, .mode-btn:focus-visible {
                     pageTag(c.page) +
                 '</div>' +
                 '<div class="card-body">' +
-                    (c.definition ? '<p>' + escapeHtml(c.definition) + '</p>' : '') +
+                    (c.definition ? '<p>' + markGlossaryTerms(c.definition, c.name) + '</p>' : '') +
                     elements + points + formula +
                     (c.types ? '<p><strong>类型:</strong> ' + escapeHtml(c.types.join('、')) + '</p>' : '') +
-                    (c.boundary ? '<div class="deep-only" style="margin-top:8px;padding:8px 12px;background:var(--bg-soft);border-left:3px solid var(--status-review-text);border-radius:4px;"><strong style="color:var(--status-review-text);">⚠ 适用边界：</strong> ' + escapeHtml(c.boundary) + '</div>' : '') +
-                    (c.variation ? '<div class="deep-only" style="margin-top:6px;padding:8px 12px;background:var(--bg-soft);border-left:3px solid var(--primary);border-radius:4px;"><strong style="color:var(--primary);">🔄 变形/等价表述：</strong> ' + escapeHtml(c.variation) + '</div>' : '') +
+                    (c.boundary ? '<div class="deep-only" style="margin-top:8px;padding:8px 12px;background:var(--bg-soft);border-left:3px solid var(--status-review-text);border-radius:4px;"><strong style="color:var(--status-review-text);">⚠ 适用边界：</strong> ' + markGlossaryTerms(c.boundary, c.name) + '</div>' : '') +
+                    (c.variation ? '<div class="deep-only" style="margin-top:6px;padding:8px 12px;background:var(--bg-soft);border-left:3px solid var(--primary);border-radius:4px;"><strong style="color:var(--primary);">🔄 变形/等价表述：</strong> ' + markGlossaryTerms(c.variation, c.name) + '</div>' : '') +
                     statusButtons(id) +
                 '</div>' +
                 (related ? '<div class="related-tags">' + related + '</div>' : '') +
@@ -1753,12 +1832,64 @@ button:focus-visible, .mode-btn:focus-visible {
 
     function renderConnections(connections) {
         if (!connections || !connections.length) return '';
+        const validTypes = ['prerequisite', 'foundation', 'leads_to', 'analogy'];
+        const prefixMap = { prerequisite: '前置', foundation: '铺垫', leads_to: '引向', analogy: '类比' };
         const items = connections.map(function(c) {
-            const prefix = c.type === 'prerequisite' ? '前置:' : (c.type === 'foundation' ? '铺垫:' : '');
+            const type = c.type || '';
+            const prefix = prefixMap[type] || '';
+            const actorClass = 'actor-' + (validTypes.includes(type) ? type : 'default');
             const ref = c.from_chapter || c.for_chapter || c.chapter_ref || '';
-            return '<li>' + prefix + ' ' + escapeHtml(c.concept || '') + (ref ? ' (' + escapeHtml(ref) + ')' : '') + '</li>';
+            return '<li class="' + actorClass + '">' + (prefix ? '<strong>' + prefix + ':</strong> ' : '') + escapeHtml(c.concept || '') + (ref ? ' (' + escapeHtml(ref) + ')' : '') + '</li>';
         }).join('');
         return '<ul class="connections-list">' + items + '</ul>';
+    }
+
+    // === Glossary 术语表（concept name → definition）用于 tooltip 标记 ===
+    // 同时加入 name 的"核心部分"（空格前的部分），便于匹配简称
+    // 如 "符号函数 sgn x" → 也加入 "符号函数"
+    const glossary = (function() {
+        const g = {};
+        (data.chapters || []).forEach(function(ch) {
+            (ch.concepts || []).forEach(function(c) {
+                const name = c.name || c.concept;
+                if (name && name.length >= 2 && c.definition) {
+                    g[name] = c.definition;
+                    const coreName = name.split(/\s+/)[0];
+                    if (coreName !== name && coreName.length >= 2 && !g[coreName]) {
+                        g[coreName] = c.definition;
+                    }
+                }
+            });
+        });
+        return g;
+    })();
+
+    function markGlossaryTerms(text, selfName) {
+        if (!text) return '';
+        let result = escapeHtml(text);
+        const terms = Object.keys(glossary)
+            .filter(function(t) { return t.length >= 2 && t !== selfName; })
+            .sort(function(a, b) { return b.length - a.length; });
+        const used = new Set();
+        terms.forEach(function(term) {
+            if (used.has(term)) return;
+            const escapedTerm = escapeHtml(term);
+            const idx = result.indexOf(escapedTerm);
+            if (idx >= 0) {
+                const before = idx > 0 ? result[idx - 1] : '';
+                const afterEnd = idx + escapedTerm.length;
+                const after = afterEnd < result.length ? result[afterEnd] : '';
+                const isBoundary = function(ch) { return !ch || !/[一-龥A-Za-z0-9]/.test(ch); };
+                if (isBoundary(before) && isBoundary(after)) {
+                    const def = escapeHtml(glossary[term]).slice(0, 200);
+                    result = result.slice(0, idx) +
+                        '<span class="glossary-term" data-definition="' + def + '">' + escapedTerm + '</span>' +
+                        result.slice(afterEnd);
+                    used.add(term);
+                }
+            }
+        });
+        return result;
     }
 
     const html = data.chapters.map(function(ch, idx) {
@@ -2397,6 +2528,129 @@ button:focus-visible, .mode-btn:focus-visible {
             safeLSSet('last-scroll-position', window.scrollY);
         }, 1000);
     });
+
+    // === Thin scroll progress bar (top 2px, scroll-linked) ===
+    (function setupThinProgressBar() {
+        const bar = document.getElementById('scroll-progress-thin');
+        if (!bar) return;
+        function updateBar() {
+            const scrollTop = window.scrollY;
+            const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+            const pct = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+            bar.style.width = pct + '%';
+        }
+        window.addEventListener('scroll', updateBar, { passive: true });
+        updateBar();
+    })();
+
+    // === Reveal animation (IntersectionObserver + stagger in card-grid) ===
+    (function setupRevealAnimations() {
+        const revealObserver = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    revealObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+        function scan() {
+            document.querySelectorAll('.card, .formula-block, .pitfall-card, .example-card').forEach(function(el) {
+                if (!el.classList.contains('visible')) {
+                    revealObserver.observe(el);
+                }
+            });
+        }
+        scan();
+        const mainContent = document.getElementById('main-content');
+        if (mainContent) {
+            const mutationObserver = new MutationObserver(function() { scan(); });
+            mutationObserver.observe(mainContent, { childList: true, subtree: true });
+        }
+    })();
+
+    // === Keyboard navigation (arrow keys to jump between chapters) ===
+    (function setupKeyboardNav() {
+        function jumpToChapter(direction) {
+            const chapters = Array.from(document.querySelectorAll('section.chapter'));
+            if (!chapters.length) return;
+            const scrollY = window.scrollY + 100;
+            let target = null;
+            if (direction > 0) {
+                target = chapters.find(function(c) {
+                    return c.getBoundingClientRect().top + window.scrollY > scrollY;
+                });
+            } else {
+                for (let i = chapters.length - 1; i >= 0; i--) {
+                    const top = chapters[i].getBoundingClientRect().top + window.scrollY;
+                    if (top < scrollY - 10) { target = chapters[i]; break; }
+                }
+            }
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+        document.addEventListener('keydown', function(e) {
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+            if (document.querySelector('.flashcard-overlay.active')) return;
+            if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                jumpToChapter(1);
+            } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                jumpToChapter(-1);
+            }
+        });
+    })();
+
+    // === Glossary tooltip（术语 hover/tap 显示定义）===
+    (function setupGlossaryTooltip() {
+        let tooltip = null;
+        function ensureTooltip() {
+            if (tooltip) return tooltip;
+            tooltip = document.createElement('div');
+            tooltip.className = 'glossary-tooltip';
+            document.body.appendChild(tooltip);
+            return tooltip;
+        }
+        function show(target) {
+            const def = target.getAttribute('data-definition');
+            if (!def) return;
+            const t = ensureTooltip();
+            t.textContent = def;
+            t.classList.add('visible');
+            const rect = target.getBoundingClientRect();
+            const tw = t.offsetWidth;
+            const th = t.offsetHeight;
+            let top = rect.bottom + 8;
+            let left = rect.left + (rect.width / 2) - (tw / 2);
+            if (top + th > window.innerHeight - 10) {
+                top = rect.top - th - 8;
+            }
+            if (left < 10) left = 10;
+            if (left + tw > window.innerWidth - 10) left = window.innerWidth - tw - 10;
+            t.style.top = top + 'px';
+            t.style.left = left + 'px';
+        }
+        function hide() {
+            if (tooltip) tooltip.classList.remove('visible');
+        }
+        document.addEventListener('mouseover', function(e) {
+            const t = e.target.closest('.glossary-term');
+            if (t) show(t);
+        });
+        document.addEventListener('mouseout', function(e) {
+            const t = e.target.closest('.glossary-term');
+            if (t) hide();
+        });
+        document.addEventListener('click', function(e) {
+            const t = e.target.closest('.glossary-term');
+            if (t) { show(t); e.stopPropagation(); }
+            else { hide(); }
+        });
+        document.addEventListener('scroll', hide, { passive: true });
+    })();
 
     const ts = document.createElement('div');
     ts.style.cssText = 'text-align:center;color:var(--text-soft);font-size:0.75rem;padding:2rem 0;border-top:1px solid var(--border);margin-top:3rem';

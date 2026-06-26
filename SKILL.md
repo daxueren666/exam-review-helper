@@ -200,14 +200,14 @@ python scripts/run_pipeline.py textbook.pdf   # 自动检测并打印模式
       "chapter_title": "第1章 函数与极限",
       "page_range": "1-45",
       "summary": "本章核心摘要（100-200 字）",
-      "concepts": [{"name", "definition", "importance", "page", "related_to", "boundary", "variation"}],
+      "concepts": [{"name", "definition", "importance", "difficulty", "page", "related_to", "boundary", "variation"}],
       "formulas": [{"name", "latex", "explanation", "conditions", "page", "derivation_steps", "confidence"}],
       "examples": [{"title", "description", "key_point", "page"}],
       "pitfalls": [{"warning", "correction", "example", "page"}],
       "connections": [{"type", "concept", "chapter_ref"}]
     }
   ],
-  "_note": "核心概念（importance='核心'）boundary 和 variation 必填",
+  "_note": "核心概念（importance='核心'）boundary 和 variation 必填；每个 concept 必填 difficulty（基础/进阶/高难）",
   "metadata": {}
 }
 ```

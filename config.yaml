@@ -20,8 +20,8 @@ extraction:
   cache_dir_name: ".cache"        # 缓存目录名（在 Review - <stem>/ 下）
 
   # 重试逻辑
-  max_retries: 1                  # 提取失败重试次数
-  retry_chunk_shrink: 2           # 重试时 chunk_size 除以此数（50→25→12）
+  max_retries: 3                  # 提取失败重试次数（覆盖 std::bad_alloc 部分提取）
+  retry_chunk_shrink: 2           # 重试时 chunk_size 除以此数（50→25→12→6）
 
   # 安全限制（防恶意文件）
   max_pdf_size_mb: 2048           # PDF 最大 2GB（超过拒绝）

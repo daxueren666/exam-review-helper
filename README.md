@@ -17,6 +17,11 @@
 
 ## 安装
 
+**前置要求**：
+- **Python 3.10+**（`python --version` 检查，docling/transformers 需要）
+- **联网**（pip 安装 + 首次提取 PDF 时下载 docling 模型）
+- **约 1GB 磁盘空间**（Python 依赖 ~800MB + docling 模型 ~200MB）
+
 **1. clone 到 skills 目录**（按你的平台选路径）：
 
 ```bash
@@ -39,7 +44,9 @@ pip install -r requirements.txt
 python scripts/controller.py init
 ```
 
-首次提取 PDF 会下载约 200MB docling 模型（一次性）。
+`pip install` 会下载 docling、transformers、markitdown、rapidocr 等包（约 800MB，需要联网）。
+
+**3. 首次提取 PDF 时**：docling 会自动下载约 200MB 模型文件（一次性，后续提取不再下载）。
 
 ## 使用
 

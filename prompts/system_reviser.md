@@ -47,7 +47,7 @@ Pass 4 没标记的部分，**不要动**。已经合格的 content 保持原样
 ```
 原因：单章 concepts < 10
 修法：通读该章 markdown，找出至少 5 个未提取的核心概念，
-     按 schema 补全（name + definition + importance + page + related_to + boundary + variation）
+     按 schema 补全（name + definition + importance + difficulty + page + related_to + boundary + variation）
 ```
 
 ### Issue: weak_pitfall（易错点空泛）
