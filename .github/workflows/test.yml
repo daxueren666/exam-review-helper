@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: skills/exam-review-helper
     strategy:
       matrix:
         python-version: ['3.10', '3.11', '3.12']

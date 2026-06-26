@@ -2,6 +2,8 @@
 
 欢迎为 exam-review-helper 贡献代码。本指南说明如何加新功能、写测试、提 PR。
 
+> **工作目录**：仓库结构是 `skills/exam-review-helper/`（符合 [Agent Skills spec](https://agentskills.io/specification)）。以下所有命令和路径都假设你在 `skills/exam-review-helper/` 目录下运行。
+
 ## 如何贡献
 
 1. **Fork → 改 → 提 PR**：Fork 仓库，在分支上改动，提 PR 到 main。

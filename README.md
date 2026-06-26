@@ -3,7 +3,7 @@
 > 把 PDF / Word / TXT / Markdown 教材浓缩成交互式 HTML 复习文档的 Claude Code / Codex CLI Skill。
 > 自动识别文科/理工科，5-pass 深度提取，原生支持扫描版 PDF OCR。
 
-![screenshot](docs/screenshot.png)
+![screenshot](skills/exam-review-helper/docs/screenshot.png)
 
 ## 这是什么
 
@@ -18,28 +18,37 @@
 ## 安装
 
 **前置要求**：
+- **GitHub CLI 2.90+**（`gh --version` 检查，用于 `gh skill install`）
 - **Python 3.10+**（`python --version` 检查，docling/transformers 需要）
 - **联网**（pip 安装 + 首次提取 PDF 时下载 docling 模型）
 - **约 1GB 磁盘空间**（Python 依赖 ~800MB + docling 模型 ~200MB）
 
-**1. clone 到 skills 目录**（按你的平台选路径）：
+**1. 用 `gh skill install` 安装**（推荐，自动更新）：
 
 ```bash
-# Claude Code 用户
-git clone https://github.com/daxueren666/exam-review-helper.git \
-  ~/.claude/skills/exam-review-helper
+# Claude Code 用户（user scope 全局可用）
+gh skill install daxueren666/exam-review-helper --agent claude-code --scope user
 
 # Codex CLI 用户
-git clone https://github.com/daxueren666/exam-review-helper.git \
-  ~/.agents/skills/exam-review-helper
+gh skill install daxueren666/exam-review-helper --agent codex --scope user
+
+# 锁定到特定版本（生产环境推荐）
+gh skill install daxueren666/exam-review-helper --agent claude-code --pin v1.1.0
 ```
 
-Windows 把 `~/` 换成 `%USERPROFILE%\`。
+**更新到最新版本**：
+
+```bash
+gh skill update exam-review-helper     # 更新单个
+gh skill update --all                  # 更新全部已装 skill
+```
 
 **2. 装 Python 依赖 + 检查环境**：
 
+`gh skill install` 装到 `~/.claude/skills/exam-review-helper/`（user scope）。进入该目录装依赖：
+
 ```bash
-cd ~/.claude/skills/exam-review-helper   # 或 ~/.agents/skills/exam-review-helper
+cd ~/.claude/skills/exam-review-helper
 pip install -r requirements.txt
 python scripts/controller.py init
 ```
@@ -47,6 +56,20 @@ python scripts/controller.py init
 `pip install` 会下载 docling、transformers、markitdown、rapidocr 等包（约 800MB，需要联网）。
 
 **3. 首次提取 PDF 时**：docling 会自动下载约 200MB 模型文件（一次性，后续提取不再下载）。
+
+<details>
+<summary><b>开发用：git clone 方式</b></summary>
+
+```bash
+git clone https://github.com/daxueren666/exam-review-helper.git
+cd exam-review-helper/skills/exam-review-helper
+pip install -r requirements.txt
+python scripts/controller.py init
+```
+
+注意：仓库结构是 `skills/exam-review-helper/`（符合 [Agent Skills spec](https://agentskills.io/specification)），所以 clone 后要进入子目录。
+
+</details>
 
 ## 使用
 
@@ -114,17 +137,18 @@ python scripts/controller.py --version
 
 ## 文档
 
-- [SKILL.md](SKILL.md) — skill 主指令（Claude Code / Codex 自动加载）
-- [references/multi-pass-workflow.md](references/multi-pass-workflow.md) — 5-pass 详细流程
-- [references/multi-format-input.md](references/multi-format-input.md) — 多格式输入说明
-- [references/advanced-features.md](references/advanced-features.md) — 高级功能（图片剥离/OCR/流水线/断点续传/公式增强）
-- [references/common-failure-modes.md](references/common-failure-modes.md) — 防偷懒清单
+- [SKILL.md](skills/exam-review-helper/SKILL.md) — skill 主指令（Claude Code / Codex 自动加载）
+- [references/multi-pass-workflow.md](skills/exam-review-helper/references/multi-pass-workflow.md) — 5-pass 详细流程
+- [references/multi-format-input.md](skills/exam-review-helper/references/multi-format-input.md) — 多格式输入说明
+- [references/advanced-features.md](skills/exam-review-helper/references/advanced-features.md) — 高级功能（图片剥离/OCR/流水线/断点续传/公式增强）
+- [references/common-failure-modes.md](skills/exam-review-helper/references/common-failure-modes.md) — 防偷懒清单
 - [ARCHITECTURE.md](ARCHITECTURE.md) — 架构说明
 - [CONTRIBUTING.md](CONTRIBUTING.md) — 贡献指南
 
 ## 开发
 
 ```bash
+cd skills/exam-review-helper
 pytest tests/ -v                   # 120 个单元测试
 python scripts/run_evals.py --all  # 跑 eval 套件
 ```
