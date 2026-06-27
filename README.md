@@ -28,6 +28,58 @@
 
 详见 [release v1.2.1](https://github.com/daxueren666/exam-review-helper/releases/tag/v1.2.1)。
 
+## v1.3 深度 bug 修复
+
+v1.2 解决了 docling 崩溃的表面问题，但 `controller.py` 的状态机、重试逻辑、fallback 触发条件、多文件模式等路径上仍藏着多个边界情况 bug。v1.3 经过 **5 轮 fresh agent 独立审查 + 实测验证**，累计修复 15 个 bug，高严重性全部清零。
+
+### 修复趋势（5 轮收敛）
+
+| 轮次 | 高 | 中 | 低 | 总计 |
+|---|---|---|---|---|
+| 第一轮 | 2 | 3 | 0 | 5 |
+| 第二轮 | 1 | 2 | 0 | 3 |
+| 第三轮 | 0 | 2 | 2 | 4 |
+| 第四轮 | 0 | 0 | 0 | 0 |
+| 第五轮 | 0 | 1 | 3 | 4 |
+| **最终** | **0** | **0** | **0** | **0** |
+
+### 关键修复
+
+**状态机与 fallback**：
+- partial + 高失败率（>50%）现在正确触发整体 fallback 到 PyMuPDF+RapidOCR（之前只 error 才触发，partial 静默返回残缺产物）
+- 第一次 partial 失败率 <10% 直接接受，避免不必要的完整重跑（之前 98/100 页会触发 4 块重试，耗时从 16 分钟爆炸到 35+ 分钟）
+- 子进程 `sys.exit` 与父进程 `returncode` 检查对齐：partial 也 exit 0，避免 partial 块的 docling 结果被误判为 error 丢弃
+
+**返回字段一致性**：
+- `extract_pdf` success 路径 `pages` 字段统一用 `actual_pages`（之前用 `len(result.document.pages)` 含空页，与 partial 路径语义不一致）
+- `extract_pdf_pymupdf_rapidocr` 返回 dict 补全 `pages_processed`/`expected_pages` 字段
+- `extract_multiple` 返回 dict 补全 `pages_failed`/`failed_ranges`/`pages_processed` 字段
+- `page_range` 越界时按实际可处理页数判定 status（之前 `page_range=(50,100)` 对 80 页 PDF 会误报 success，丢失 21 页无报错）
+
+**多文件模式**：
+- `extract_multiple` 透传 `backend` 和 `use_cache` 参数（之前 `--no-cache` 和 `--backend` 在多文件模式下被静默丢弃）
+- `extract_multiple` 状态判定区分 success/partial/error（之前永远返回 success，即使 N-1 个文件失败）
+
+**子进程与防御**：
+- 子进程 fallback 推断路径用 `[PAGE N]` 计数验证实际页数（之前仅检查 md 文件存在就报 success，可能掩盖残缺内容）
+- `_extract_chunk_in_subprocess` 加 page_range 越界防御
+- `chunked_extract_pdf` 全 fallback 时 `all_doc_dicts[0]` 加空列表守卫，避免 IndexError
+- `chunk_result["markdown_path"]` 改用 `.get()`，避免极端情况 KeyError
+- fallback 块的 doc_dict 现在加入 `all_doc_dicts`，避免合并 JSON 时 pages 元数据不全
+
+**可配置性**：
+- `use_pdfium` 现在可在 `config.yaml` 配置（之前硬编码 True，docling-parse 后端不可选，与文档矛盾）
+- `--backend pymupdf` 直接路径现在透传 `dpi=cfg.fallback_dpi()`
+
+**其他**：
+- `validate` 目录扫描 glob 从 `notes_*.json` 改为 `*_notes.json`，匹配 `seg-XXX_notes.json` 命名约定
+- 删除死代码 `pages = len(result.document.pages)`
+- `file_hash` 预声明 `None`，提升可维护性
+
+### 验证
+
+每轮修复后派 fresh agent（无上下文）独立审查 + 实测：静态代码审查 + pymupdf 返回字段测试 + page_range 越界测试 + 子进程无效参数测试 + 多文件 no-cache 测试 + generate 烟雾测试 + validate 目录模式测试。第五轮所有实测 PASS，静态审查零新高危 bug。
+
 ## 安装
 
 **前置要求**：

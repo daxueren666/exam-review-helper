@@ -261,12 +261,10 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None,
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(doc_dict, f, ensure_ascii=False, indent=2)
 
-    pages = len(result.document.pages) if hasattr(result.document, "pages") else 0
-
     # 检测 docling 内部错误（如 std::bad_alloc）导致的部分提取
     # docling 的 bad_alloc 是 C++ 层警告，只打印到 stderr，不抛 Python 异常
     # result.document.pages 可能包含空页（bad_alloc 失败的页仍在 dict 里）
-    # 所以用 markdown 实际 [PAGE N] 标记数检测，而不是 len(pages)
+    # 所以用 markdown 实际 [PAGE N] 标记数检测，而不是 len(result.document.pages)
     actual_pages = len(re.findall(r'^\[PAGE \d+\]', markdown, re.MULTILINE))
     if page_range is not None:
         expected_pages = page_range[1] - page_range[0] + 1
@@ -316,7 +314,10 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None,
         "output_dir": str(output_dir),
         "markdown_path": str(markdown_path),
         "json_path": str(json_path),
-        "pages": pages,
+        "pages": actual_pages,
+        "pages_processed": actual_pages,
+        "pages_failed": 0,
+        "expected_pages": expected_pages,
         "stem": pdf_path.stem,
     }
 
@@ -423,8 +424,18 @@ def extract_pdf_pymupdf_rapidocr(pdf_path: str, output_dir: str = None,
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(json_data, f, ensure_ascii=False, indent=2)
 
-    status = "success" if pages_fail == 0 else "partial"
-    print(f"[Controller] fallback 完成: {pages_ok}/{end_page - start_page + 1} 页 → {markdown_path}", file=sys.stderr)
+    # expected_pages 按实际可处理页数算（page_range 越界时截断到 total）
+    expected_pages = min(end_page, total) - start_page + 1
+    if total < start_page:
+        expected_pages = 0
+    # status 判定：pages_fail==0 且 pages_ok==expected 才是 success；否则 partial
+    if pages_fail == 0 and pages_ok == expected_pages:
+        status = "success"
+    elif pages_ok > 0:
+        status = "partial"
+    else:
+        status = "error"
+    print(f"[Controller] fallback 完成: {pages_ok}/{expected_pages} 页 → {markdown_path}", file=sys.stderr)
 
     return {
         "status": status,
@@ -434,7 +445,9 @@ def extract_pdf_pymupdf_rapidocr(pdf_path: str, output_dir: str = None,
         "markdown_path": str(markdown_path),
         "json_path": str(json_path),
         "pages": pages_ok,
+        "pages_processed": pages_ok,
         "pages_failed": pages_fail,
+        "expected_pages": expected_pages,
         "backend": "pymupdf_rapidocr",
         "stem": pdf_path.stem,
     }
@@ -458,6 +471,12 @@ def _extract_chunk_in_subprocess(pdf_path: str, output_dir: str, page_start: int
     内存不被 Python GC 回收。同进程内循环会累积内存直至 std::bad_alloc。
     子进程退出后，OS 直接回收所有内存。
     """
+    # 防御：page_range 越界校验（当前调用链 chunked_extract_pdf 已截断，但函数级契约要健壮）
+    if page_start < 1:
+        return {"status": "error", "message": f"page_start {page_start} < 1 无效"}
+    if page_end < page_start:
+        return {"status": "error", "message": f"page_end {page_end} < page_start {page_start} 无效"}
+
     import subprocess
     import sys as _sys
 
@@ -504,11 +523,33 @@ def _extract_chunk_in_subprocess(pdf_path: str, output_dir: str, page_start: int
     md_path = out_dir / "extracted_content.md"
     json_path = out_dir / "extracted_content.json"
     if md_path.exists():
+        # 用 [PAGE N] 标记计数实际页数，避免子进程 returncode=0 但内容残缺时假 success
+        try:
+            md_content = md_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            md_content = ""
+        actual_pages = len(re.findall(r'^\[PAGE \d+\]', md_content, re.MULTILINE))
+        expected_pages = page_end - page_start + 1
+        if actual_pages == 0:
+            return {"status": "error", "message": f"块 p.{page_start}-{page_end} md 文件存在但无 [PAGE N] 标记（残缺）"}
+        if actual_pages < expected_pages:
+            return {
+                "status": "partial",
+                "markdown_path": str(md_path),
+                "json_path": str(json_path),
+                "pages": actual_pages,
+                "pages_processed": actual_pages,
+                "pages_failed": expected_pages - actual_pages,
+                "expected_pages": expected_pages,
+            }
         return {
             "status": "success",
             "markdown_path": str(md_path),
             "json_path": str(json_path),
-            "pages": page_end - page_start + 1,
+            "pages": actual_pages,
+            "pages_processed": actual_pages,
+            "pages_failed": 0,
+            "expected_pages": expected_pages,
         }
     return {"status": "error", "message": f"块 p.{page_start}-{page_end} 未产生文件"}
 
@@ -597,6 +638,26 @@ def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int =
                 all_markdown.append(chunk_md)
                 pages_processed += fb_result.get("pages", 0)
                 pages_failed += fb_result.get("pages_failed", 0)
+                # 把 fallback 的 doc_dict 也加入 all_doc_dicts，避免合并 JSON 时 pages 元数据不全
+                fb_json_path = Path(fb_result.get("json_path", str(chunk_subdir / "extracted_content.json")))
+                if fb_json_path.exists():
+                    try:
+                        with open(fb_json_path, "r", encoding="utf-8") as f:
+                            all_doc_dicts.append(json.load(f))
+                    except (json.JSONDecodeError, OSError):
+                        all_doc_dicts.append({
+                            "schema_name": "PyMuPDFRapidOCRDocument",
+                            "name": pdf_path.stem,
+                            "pages": {},
+                            "backend": "pymupdf_rapidocr",
+                        })
+                else:
+                    all_doc_dicts.append({
+                        "schema_name": "PyMuPDFRapidOCRDocument",
+                        "name": pdf_path.stem,
+                        "pages": {},
+                        "backend": "pymupdf_rapidocr",
+                    })
                 print(f"[Controller]   fallback 成功: {fb_result.get('pages',0)} 页", file=sys.stderr)
                 continue
             else:
@@ -608,14 +669,25 @@ def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int =
             # partial 块接受，记录失败页数
             pages_failed += chunk_result.get("pages_failed", 0)
 
-        chunk_md_path = Path(chunk_result["markdown_path"])
+        # 防御：极端情况下 chunk_result 可能缺 markdown_path/json_path（如子进程 JSON 字段不全）
+        chunk_md_path_str = chunk_result.get("markdown_path")
+        if not chunk_md_path_str or not Path(chunk_md_path_str).exists():
+            print(f"[Controller]   块 p.{start}-{end} 缺 markdown_path，跳过", file=sys.stderr)
+            pages_failed += (end - start + 1)
+            failed_ranges.append((start, end))
+            continue
+        chunk_md_path = Path(chunk_md_path_str)
         chunk_md = chunk_md_path.read_text(encoding="utf-8")
         all_markdown.append(chunk_md)
 
-        chunk_json_path = Path(chunk_result["json_path"])
-        with open(chunk_json_path, "r", encoding="utf-8") as f:
-            chunk_dict = json.load(f)
-        all_doc_dicts.append(chunk_dict)
+        chunk_json_path_str = chunk_result.get("json_path")
+        if chunk_json_path_str and Path(chunk_json_path_str).exists():
+            try:
+                with open(chunk_json_path_str, "r", encoding="utf-8") as f:
+                    chunk_dict = json.load(f)
+                all_doc_dicts.append(chunk_dict)
+            except (json.JSONDecodeError, OSError):
+                pass  # JSON 读失败不阻塞 markdown 合并
 
         pages_processed += chunk_result.get("pages", 0)
 
@@ -631,17 +703,29 @@ def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int =
     markdown_path.write_text(combined_md, encoding="utf-8")
 
     # 写合并 JSON（简单合并，pages 字段合并）
-    combined_json = {
-        "schema_name": all_doc_dicts[0].get("schema_name", "DoclingDocument"),
-        "version": all_doc_dicts[0].get("version"),
-        "name": pdf_path.stem,
-        "origin": all_doc_dicts[0].get("origin"),
-        "pages": {},
-        "chapters_merged": len(all_doc_dicts),
-    }
-    for d in all_doc_dicts:
-        if isinstance(d.get("pages"), dict):
-            combined_json["pages"].update(d["pages"])
+    # 注意：all_doc_dicts 可能为空（所有块都 error→PyMuPDF fallback 时），需兜底
+    if all_doc_dicts:
+        base = all_doc_dicts[0]
+        combined_json = {
+            "schema_name": base.get("schema_name", "DoclingDocument"),
+            "version": base.get("version"),
+            "name": pdf_path.stem,
+            "origin": base.get("origin"),
+            "pages": {},
+            "chapters_merged": len(all_doc_dicts),
+        }
+        for d in all_doc_dicts:
+            if isinstance(d.get("pages"), dict):
+                combined_json["pages"].update(d["pages"])
+    else:
+        # 所有块都走 PyMuPDF fallback（无 docling JSON），写最小元数据
+        combined_json = {
+            "schema_name": "DoclingDocument",
+            "name": pdf_path.stem,
+            "pages": {},
+            "chapters_merged": 0,
+            "note": "All chunks fell back to PyMuPDF+RapidOCR; no docling JSON available.",
+        }
     json_path = output_dir / "extracted_content.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(combined_json, f, ensure_ascii=False, indent=2)
@@ -669,7 +753,8 @@ def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int =
 
 def extract_multiple(source_paths: list, output_dir: str = None,
                      chunk_size: int = None, no_chunk: bool = False,
-                     strip_images: bool = False, ocr_correct: bool = False) -> Dict[str, Any]:
+                     strip_images: bool = False, ocr_correct: bool = False,
+                     backend: str = None, use_cache: bool = True) -> Dict[str, Any]:
     """提取**多个**文件并合并为一个 markdown（用于跨资料复习）
 
     支持混合格式（如 ["a.pdf", "b.docx", "c.md"]）。
@@ -689,6 +774,7 @@ def extract_multiple(source_paths: list, output_dir: str = None,
     combined_md = []
     combined_sources = []
     total_pages = 0
+    failed_files = []
 
     for src_path in source_paths:
         src = Path(src_path)
@@ -697,34 +783,65 @@ def extract_multiple(source_paths: list, output_dir: str = None,
         sub_dir = output_dir / f"{src.stem} ({src.suffix.lstrip('.')})"
         result = extract(str(src), str(sub_dir),
                          chunk_size=chunk_size, no_chunk=no_chunk,
-                         strip_images=strip_images, ocr_correct=ocr_correct)
+                         strip_images=strip_images, ocr_correct=ocr_correct,
+                         backend=backend, use_cache=use_cache)
         if result.get("status") not in ("success", "partial"):
             print(f"[Controller] 跳过失败的文件: {src}")
+            failed_files.append({"stem": src.stem, "reason": result.get("message", result.get("status"))})
             continue
 
         # 读 markdown 加来源标注
         sub_md = Path(result["markdown_path"]).read_text(encoding="utf-8")
         pages = result.get("pages", 0)
         combined_md.append(f"\n\n# === 来源：{src.stem} ({pages} 页) ===\n\n{sub_md}")
-        combined_sources.append({"stem": src.stem, "pages": pages})
+        combined_sources.append({
+            "stem": src.stem,
+            "pages": pages,
+            "status": result.get("status"),
+            "failed_ranges": result.get("failed_ranges", []),
+        })
         total_pages += pages
 
     if not combined_md:
-        return {"status": "error", "message": "所有文件都提取失败"}
+        return {"status": "error", "message": f"所有 {len(source_paths)} 个文件都提取失败", "failed_files": failed_files}
 
     # 写合并 markdown
     combined_path = output_dir / "extracted_content.md"
     combined_path.write_text("\n".join(combined_md), encoding="utf-8")
-    print(f"\n[Controller] 合并完成: {len(combined_sources)} 个文件 / {total_pages} 页")
+    print(f"\n[Controller] 合并完成: {len(combined_sources)}/{len(source_paths)} 个文件 / {total_pages} 页")
     print(f"  合并 Markdown: {combined_path}")
     print(f"  来源: {combined_sources}")
+    if failed_files:
+        print(f"  失败文件: {[f['stem'] for f in failed_files]}")
+
+    # 状态判定：全部 success → success；有失败但有成功 → partial；其他 → error（上面已拦截）
+    success_count = sum(1 for s in combined_sources if s["status"] == "success")
+    partial_count = sum(1 for s in combined_sources if s["status"] == "partial")
+    if not failed_files and partial_count == 0:
+        overall_status = "success"
+    else:
+        overall_status = "partial"
+
+    # 累计各文件的失败页数（字段一致性，避免下游用 result['pages_failed'] 中括号访问时 KeyError）
+    total_pages_failed = sum(
+        s.get("pages_failed", 0) if isinstance(s.get("pages_failed"), int)
+        else len(s.get("failed_ranges", []))
+        for s in combined_sources
+    )
 
     return {
-        "status": "success",
+        "status": overall_status,
         "output_dir": str(output_dir),
         "markdown_path": str(combined_path),
         "sources": combined_sources,
+        "failed_files": failed_files,
+        "failed_ranges": [fr for s in combined_sources for fr in s.get("failed_ranges", [])],
         "total_pages": total_pages,
+        "pages_processed": total_pages,
+        "pages_failed": total_pages_failed,
+        "success_count": success_count,
+        "partial_count": partial_count,
+        "failed_count": len(failed_files),
     }
 
 
@@ -753,6 +870,8 @@ def extract(source_path: str, output_dir: str = None,
     """
     from config import get_config
     cfg = get_config()
+    # 预声明 file_hash，避免 use_cache 守卫条件被未来修改后 save_cache 引用未定义变量
+    file_hash = None
     if backend is None:
         backend = cfg.pdf_backend() if hasattr(cfg, "pdf_backend") else "auto"
 
@@ -792,13 +911,24 @@ def extract(source_path: str, output_dir: str = None,
     # pymupdf 后端直接走 fallback，不需 docling 重试
     if ext == ".pdf" and backend == "pymupdf":
         print("[Controller] backend=pymupdf，直接用 PyMuPDF+RapidOCR 提取", file=sys.stderr)
-        result = extract_pdf_pymupdf_rapidocr(str(path), str(output_dir), ocr_correct=ocr_correct)
+        result = extract_pdf_pymupdf_rapidocr(str(path), str(output_dir),
+                                              dpi=cfg.fallback_dpi(), ocr_correct=ocr_correct)
     else:
         result = _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correct, cfg, ocr_scale=ocr_scale)
 
     # === 重试逻辑：PDF chunked 失败时减小 chunk_size 重试 ===
+    # 优化：第一次 partial 失败率 < 10% 直接接受，不重试（避免不必要的完整重跑）
+    first_pass_acceptable = False
+    if result.get("status") == "partial":
+        _proc = result.get("pages_processed", 0)
+        _fail = result.get("pages_failed", 0)
+        _tot = _proc + _fail
+        if _tot > 0 and _fail / _tot < 0.1:
+            print(f"[Controller] 接受第一次 partial：{_proc}/{_tot} 页成功（失败 {_fail} 页 < 10%），跳过重试", file=sys.stderr)
+            first_pass_acceptable = True
+
     # error 或 partial（失败比例高）都触发重试
-    if result.get("status") in ("error", "partial") and ext == ".pdf" and not no_chunk and backend != "pymupdf":
+    if not first_pass_acceptable and result.get("status") in ("error", "partial") and ext == ".pdf" and not no_chunk and backend != "pymupdf":
         # 优化：error 状态（docling 完全失败或失败比例高）直接跳过重试，让整体 fallback 接管
         # 因为 chunk_size 减小解决不了"单页内存爆炸"问题
         if result.get("status") == "error" and backend == "auto":
@@ -836,17 +966,30 @@ def extract(source_path: str, output_dir: str = None,
                         break
                     # 失败多，继续重试
 
-    # === 整体 fallback：docling 重试链走完仍 partial/error，且 backend=auto，用 PyMuPDF+RapidOCR 兜底 ===
-    # === 整体 fallback：仅当 docling 完全失败（error，0 页成功）才走 PyMuPDF+RapidOCR ===
-    # 注意：partial 状态（部分页成功）不触发 fallback，因为 pdfium partial 仍有公式占位符，
-    # fallback 到 PyMuPDF+RapidOCR 会丢失公式占位符（降质量）。只有 0 页成功才 fallback。
-    if (result.get("status") == "error" and ext == ".pdf" and backend == "auto"
-            and result.get("backend") != "pymupdf_rapidocr"):
-        print(f"[Controller] docling 完全失败，整体 fallback 到 PyMuPDF+RapidOCR", file=sys.stderr)
-        fb = extract_pdf_pymupdf_rapidocr(str(path), str(output_dir),
-                                          dpi=cfg.fallback_dpi(), ocr_correct=ocr_correct)
-        if fb.get("status") in ("success", "partial"):
-            result = fb
+    # === 整体 fallback ===
+    # 触发条件（backend=auto 且未走过 fallback）：
+    #   1. status="error"（docling 完全失败，0 页成功）
+    #   2. status="partial" 且失败比例 > 50%（高失败率，pdfium partial 残缺严重，宁可丢公式占位符也要 fallback）
+    # 注意：partial 且失败比例 ≤ 50% 不 fallback，保留 pdfium 的公式占位符（fallback 会丢失）
+    if (ext == ".pdf" and backend == "auto"
+            and result.get("backend") != "pymupdf_rapidocr"
+            and result.get("status") in ("error", "partial")):
+        should_fallback = False
+        if result.get("status") == "error":
+            should_fallback = True
+        else:  # partial
+            processed = result.get("pages_processed", 0)
+            failed = result.get("pages_failed", 0)
+            total = processed + failed
+            if total > 0 and failed / total > 0.5:
+                should_fallback = True
+                print(f"[Controller] partial 失败比例 {failed}/{total} > 50%，整体 fallback 到 PyMuPDF+RapidOCR", file=sys.stderr)
+        if should_fallback:
+            print(f"[Controller] docling 失败/高失败率，整体 fallback 到 PyMuPDF+RapidOCR", file=sys.stderr)
+            fb = extract_pdf_pymupdf_rapidocr(str(path), str(output_dir),
+                                              dpi=cfg.fallback_dpi(), ocr_correct=ocr_correct)
+            if fb.get("status") in ("success", "partial"):
+                result = fb
 
     # === 保存缓存 ===
     if use_cache and cfg.cache_enabled() and result.get("status") in ("success", "partial"):
@@ -884,7 +1027,8 @@ def _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correc
 
         if use_chunked:
             return chunked_extract_pdf(str(path), str(output_dir), effective_chunk_size, ocr_scale=ocr_scale)
-        return extract_pdf(str(path), str(output_dir), ocr_correct=ocr_correct, ocr_scale=ocr_scale)
+        return extract_pdf(str(path), str(output_dir), ocr_correct=ocr_correct,
+                           use_pdfium=cfg.use_pdfium(), ocr_scale=ocr_scale)
 
     # 非 PDF：chunk_size / no_chunk 不适用，仅提示
     if chunk_size is not None or no_chunk:
@@ -1095,10 +1239,21 @@ def main():
         # 注意：分块子进程模式不支持 ocr_correct（ocr_correct 仅在单进程 extract_pdf 生效）
         # 因为分块提取走 chunked_extract_pdf → 多子进程并行，每块独立提取后合并，
         # OCR 纠错在合并后由调用方对完整 markdown 调用 ocr_corrector.correct_ocr_errors
-        result = extract_pdf(pdf_path, output_dir, page_range=(page_start, page_end), ocr_scale=ocr_scale)
+        # 子进程读同一个 config.yaml 的 use_pdfium 设置
+        try:
+            from config import get_config
+            _cfg = get_config()
+            _use_pdfium = _cfg.use_pdfium()
+        except Exception:
+            _use_pdfium = True
+        result = extract_pdf(pdf_path, output_dir, page_range=(page_start, page_end),
+                             use_pdfium=_use_pdfium, ocr_scale=ocr_scale)
         # 通过 stdout 最后一行打印 JSON 结果
+        # exit 0 表示有可用产物（success 或 partial），exit 1 表示完全失败（error）
+        # 父进程 _extract_chunk_in_subprocess 拦截 returncode != 0 为 error，
+        # 所以 partial 必须 exit 0，否则 partial 块的 docling 结果会被丢弃
         print(json.dumps(result, ensure_ascii=False))
-        sys.exit(0 if result.get("status") == "success" else 1)
+        sys.exit(0 if result.get("status") in ("success", "partial") else 1)
 
     parser = argparse.ArgumentParser(
         description="exam-review-helper 控制器（对话驱动版）",
@@ -1181,7 +1336,7 @@ def main():
     p_gen.add_argument("--template", default=None, help="自定义 HTML 模板路径（仅 --format=html 有效）")
 
     p_val = sub.add_parser("validate", help="校验 Pass 2 segment notes JSON 是否合法")
-    p_val.add_argument("notes_path", help="notes JSON 文件路径（或目录，目录则校验 notes_*.json）")
+    p_val.add_argument("notes_path", help="notes JSON 文件路径（或目录，目录则校验 *_notes.json）")
     p_val.add_argument("--strict", action="store_true", help="严格模式：有任何 warning 都 exit 1")
 
     p_init = sub.add_parser("init", help="检查依赖 + 生成配置模板")
@@ -1236,6 +1391,8 @@ def main():
                 no_chunk=args.no_chunk,
                 strip_images=args.strip_images,
                 ocr_correct=args.ocr_correct,
+                backend=args.backend,
+                use_cache=use_cache,
             )
     elif args.command == "generate":
         result = generate_html(args.knowledge_json, args.output,
@@ -1243,10 +1400,10 @@ def main():
     elif args.command == "validate":
         target = Path(args.notes_path)
         if target.is_dir():
-            # 校验目录下所有 notes_*.json
-            notes_files = sorted(target.glob("notes_*.json"))
+            # 校验目录下所有 *_notes.json（匹配 seg-XXX_notes.json 等约定）
+            notes_files = sorted(target.glob("*_notes.json"))
             if not notes_files:
-                print(f"[Controller] 目录下无 notes_*.json: {target}", file=sys.stderr)
+                print(f"[Controller] 目录下无 *_notes.json: {target}", file=sys.stderr)
                 sys.exit(1)
             all_errors = []
             ok_count = 0

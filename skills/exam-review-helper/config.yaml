@@ -15,6 +15,8 @@ extraction:
   auto_chunk_size_mb: 50          # PDF >50MB 自动启用分块
   auto_chunk_pages: 100           # PDF >100页 自动启用分块
   pdf_backend: "auto"             # PDF 提取后端：auto（docling+fallback）/ docling / pymupdf
+  use_pdfium: true                # docling 后端用 PyPdfiumDocumentBackend（true，默认，避开 docling-parse std::bad_alloc 崩溃）
+                                  # 设 false 用 DoclingParseDocumentBackend（C++ 解析层，复杂页面可能崩，仅调试用）
   fallback_dpi: 150               # PyMuPDF+RapidOCR fallback 渲染分辨率（扫描版可降到 100）
   ocr_scale: 2                    # RapidOCR 渲染 scale（1=72DPI, 2=144DPI, 3=216DPI 默认）。
                                   # 高分辨率扫描版 PDF 用 3 会 numpy 内存爆炸，降到 2 可避免且不降 OCR 质量

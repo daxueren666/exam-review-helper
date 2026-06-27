@@ -105,6 +105,9 @@ class Config:
     def pdf_backend(self) -> str:
         return self.get("extraction.pdf_backend", "auto")
 
+    def use_pdfium(self) -> bool:
+        return self.get("extraction.use_pdfium", True)
+
     def fallback_dpi(self) -> int:
         return self.get("extraction.fallback_dpi", 150)
 
