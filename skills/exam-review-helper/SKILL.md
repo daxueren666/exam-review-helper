@@ -237,28 +237,39 @@ requirements.txt 已 pin 所有必需依赖：
 
 ## 大 PDF 处理（重要）
 
-docling 的 C++ 后端（docling-parse + onnxruntime）在单进程内会累积内存，处理 100+ 页 PDF 时容易在第 13 页附近触发 `std::bad_alloc`。
+docling 默认的 `DoclingParseDocumentBackend`（C++ 解析层）在处理复杂页面时会触发 `std::bad_alloc` 崩溃（[docling issue #3671](https://github.com/docling-project/docling/issues/3671)）。
 
-**controller.py 自动检测**：
-- PDF > 50MB 或 > 100 页 → 自动启用分块提取
-- 每块在**独立 Python 子进程**里跑（OS 直接回收 C++ 堆）
-- 默认 chunk_size=50，可用 `--chunk-size 25` 更激进
+**v1.2.0 三层修复（不降质量）**：
+
+1. **默认用 `PyPdfiumDocumentBackend`**：绕开 docling-parse C++ 解析层，用 Google pdfium。保留 docling 的版面分析 + OCR + 公式占位符 + 表格能力。
+2. **`ocr_scale=2`**（config.yaml）：monkey patch RapidOCR 的渲染 scale 从硬编码的 3（216 DPI）降到 2（144 DPI），减少 numpy 内存 56%。144 DPI 仍足够 OCR。
+3. **PyMuPDF+RapidOCR fallback**（`--backend pymupdf`）：docling 完全失败时的兜底，绕开 docling 全流程。会丢失公式占位符，仅作 last resort。
+
+**controller.py 自动处理**：
+- PDF > 50MB 或 > 100 页 → 自动启用分块提取（每块独立子进程）
+- 块 `error`（0 页成功）→ 自动 per-chunk fallback 到 PyMuPDF+RapidOCR
+- 块 `partial`（部分页成功）→ 接受，保留 docling 公式占位符（不 fallback）
+- 整体 `error` → 整体 fallback 到 PyMuPDF+RapidOCR
 
 ```bash
-# 自动判断（推荐）
+# 默认（推荐）：pdfium 后端 + auto fallback
 python scripts/controller.py extract big_textbook.pdf
 
 # 手动指定块大小
 python scripts/controller.py extract big_textbook.pdf --chunk-size 25
 
-# 强制不分块（小 PDF 用）
-python scripts/controller.py extract small.pdf --no-chunk
+# 强制只用 docling（不用 fallback，可能崩）
+python scripts/controller.py extract big.pdf --backend docling
+
+# 强制用 PyMuPDF+RapidOCR（跳过 docling，最稳定但丢公式占位符）
+python scripts/controller.py extract scanned.pdf --backend pymupdf
 ```
 
 **已知限制**：
 - 公式提取 `do_formula_enrichment` 默认关闭（docling 自带方案需 18-40GB VRAM）
 - 公式在 markdown 中显示为 `<!-- formula-not-decoded -->` 占位符
 - Pass 2 readers 需基于上下文重建公式（实测可行）
+- `--backend pymupdf` 会丢失公式占位符（公式完全丢失），仅当 docling 完全失败时用
 
 ---
 

@@ -582,7 +582,9 @@ def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int =
         )
         print(f"  块耗时 {(time.time() - chunk_start)/60:.1f}min", file=sys.stderr)
 
-        if chunk_result.get("status") != "success":
+        # partial 块（部分页成功）直接接受，保留 docling 的公式占位符和版面分析
+        # 只有 error 块（0 页成功）才 fallback 到 PyMuPDF+RapidOCR（会丢失公式占位符）
+        if chunk_result.get("status") == "error":
             err = chunk_result.get("message", "")[:300]
             print(f"[Controller]   块失败 p.{start}-{end}: {err}", file=sys.stderr)
             print(f"[Controller]   尝试 PyMuPDF+RapidOCR fallback...", file=sys.stderr)
@@ -602,6 +604,9 @@ def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int =
                 failed_ranges.append((start, end))
                 print(f"[Controller]   fallback 也失败: {fb_result.get('message','')[:200]}", file=sys.stderr)
                 continue
+        elif chunk_result.get("status") == "partial":
+            # partial 块接受，记录失败页数
+            pages_failed += chunk_result.get("pages_failed", 0)
 
         chunk_md_path = Path(chunk_result["markdown_path"])
         chunk_md = chunk_md_path.read_text(encoding="utf-8")
@@ -832,16 +837,16 @@ def extract(source_path: str, output_dir: str = None,
                     # 失败多，继续重试
 
     # === 整体 fallback：docling 重试链走完仍 partial/error，且 backend=auto，用 PyMuPDF+RapidOCR 兜底 ===
-    if (result.get("status") in ("error", "partial") and ext == ".pdf" and backend == "auto"
+    # === 整体 fallback：仅当 docling 完全失败（error，0 页成功）才走 PyMuPDF+RapidOCR ===
+    # 注意：partial 状态（部分页成功）不触发 fallback，因为 pdfium partial 仍有公式占位符，
+    # fallback 到 PyMuPDF+RapidOCR 会丢失公式占位符（降质量）。只有 0 页成功才 fallback。
+    if (result.get("status") == "error" and ext == ".pdf" and backend == "auto"
             and result.get("backend") != "pymupdf_rapidocr"):
-        processed = result.get("pages_processed", 0)
-        failed = result.get("pages_failed", 0)
-        total = processed + failed if failed else 1
-        if result.get("status") == "error" or (failed / total > 0.3):
-            print(f"[Controller] docling 失败比例高，整体 fallback 到 PyMuPDF+RapidOCR", file=sys.stderr)
-            fb = extract_pdf_pymupdf_rapidocr(str(path), str(output_dir), ocr_correct=ocr_correct)
-            if fb.get("status") in ("success", "partial"):
-                result = fb
+        print(f"[Controller] docling 完全失败，整体 fallback 到 PyMuPDF+RapidOCR", file=sys.stderr)
+        fb = extract_pdf_pymupdf_rapidocr(str(path), str(output_dir),
+                                          dpi=cfg.fallback_dpi(), ocr_correct=ocr_correct)
+        if fb.get("status") in ("success", "partial"):
+            result = fb
 
     # === 保存缓存 ===
     if use_cache and cfg.cache_enabled() and result.get("status") in ("success", "partial"):
