@@ -30,6 +30,9 @@ _DEFAULTS = {
         "cache_dir_name": ".cache",
         "max_retries": 3,
         "retry_chunk_shrink": 2,
+        "pdf_backend": "auto",
+        "fallback_dpi": 150,
+        "ocr_scale": 2,
         "max_pdf_size_mb": 2048,
         "max_docx_size_mb": 100,
         "max_txt_size_mb": 50,
@@ -98,6 +101,15 @@ class Config:
 
     def retry_chunk_shrink(self) -> int:
         return self.get("extraction.retry_chunk_shrink", 2)
+
+    def pdf_backend(self) -> str:
+        return self.get("extraction.pdf_backend", "auto")
+
+    def fallback_dpi(self) -> int:
+        return self.get("extraction.fallback_dpi", 150)
+
+    def ocr_scale(self) -> int:
+        return self.get("extraction.ocr_scale", 2)
 
     def max_file_size_mb(self, ext: str) -> float:
         """按扩展名返回最大文件大小（MB）"""

@@ -139,7 +139,8 @@ def export_markdown_with_pages(doc) -> str:
 
 
 def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None,
-                ocr_correct: bool = False) -> Dict[str, Any]:
+                ocr_correct: bool = False, ocr_scale: int = None,
+                use_pdfium: bool = True) -> Dict[str, Any]:
     """用 docling 提取**单个** PDF 为 markdown + 结构化 JSON
 
     Args:
@@ -148,10 +149,35 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None,
         page_range: 可选，(start, end) 页码范围（1-indexed, 闭区间）。
                     用于处理大 PDF 时分块提取，避免 std::bad_alloc。
         ocr_correct: 是否对 OCR 输出做后处理纠错（扫描版 PDF 常见误判修复）。
+        ocr_scale: RapidOCR 渲染 scale（默认 None=不 patch 用 docling 默认 3=216DPI）。
+                   降到 2（144DPI）可避免高分辨率扫描版 PDF 的 numpy 内存爆炸。
+                   144DPI 仍足够 OCR（RapidOCR 检测模型输入 736px 会 resize）。
+        use_pdfium: 是否用 PyPdfiumDocumentBackend 替代默认 DoclingParseDocumentBackend。
+                    docling-parse 的 C++ 解析层在复杂页面会 std::bad_alloc 崩溃。
+                    pdfium 是 Google 的 PDF 库，更稳定，但表格提取质量略降。
+                    保留 docling 的版面分析+OCR+公式占位符能力。
     """
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import PdfPipelineOptions, RapidOcrOptions
+
+    # Monkey patch RapidOCR 的 scale，避免高分辨率扫描版 PDF numpy 内存爆炸
+    # 根因：docling 的 rapid_ocr_model.py:307 硬编码 self.scale = 3（216 DPI），
+    # 不受 PdfPipelineOptions.images_scale 控制。216 DPI 渲染大页面会产生
+    # 1984×1408×3 float64 = 67MB 的 numpy 数组，onnxruntime 推理时爆内存。
+    # 降到 scale=2（144 DPI）能减 56% 内存，保留 docling 版面分析+公式占位符+表格。
+    if ocr_scale is not None and ocr_scale != 3:
+        try:
+            from docling.models.stages.ocr.rapid_ocr_model import RapidOcrModel
+            _original_init = RapidOcrModel.__init__
+
+            def _patched_init(self, *args, **kwargs):
+                _original_init(self, *args, **kwargs)
+                self.scale = ocr_scale
+
+            RapidOcrModel.__init__ = _patched_init
+        except ImportError:
+            print(f"[Controller] 警告：无法 patch RapidOCR scale，使用默认 216 DPI", file=sys.stderr)
 
     pdf_path = Path(pdf_path)
     if not pdf_path.exists():
@@ -172,14 +198,24 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None,
         ocr_options=RapidOcrOptions(),
         images_scale=1.0,  # 72 DPI，默认 2.0 = 144 DPI
     )
+    # 选择 PDF 后端：默认 DoclingParseDocumentBackend，崩溃时切 PyPdfiumDocumentBackend
+    pdf_format_kwargs = {"pipeline_options": pipeline_options}
+    if use_pdfium:
+        try:
+            from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
+            pdf_format_kwargs["backend"] = PyPdfiumDocumentBackend
+            print(f"[Controller] 使用 PyPdfiumDocumentBackend（避免 docling-parse std::bad_alloc）", file=sys.stderr)
+        except ImportError:
+            print(f"[Controller] 警告：PyPdfiumDocumentBackend 不可用，回退到 DoclingParseDocumentBackend", file=sys.stderr)
     converter = DocumentConverter(
         format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+            InputFormat.PDF: PdfFormatOption(**pdf_format_kwargs)
         }
     )
 
     range_label = f" p.{page_range[0]}-{page_range[1]}" if page_range else ""
-    print(f"[Controller] 正在提取 PDF: {pdf_path}{range_label}", file=sys.stderr)
+    backend_label = " [pdfium]" if use_pdfium else ""
+    print(f"[Controller] 正在提取 PDF: {pdf_path}{range_label}{backend_label}", file=sys.stderr)
 
     try:
         convert_kwargs = {}
@@ -240,15 +276,31 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None,
         missing = expected_pages - actual_pages
         print(
             f"[Controller] 警告：仅提取 {actual_pages}/{expected_pages} 页"
-            f"（{missing} 页失败，可能是 std::bad_alloc 内存错误）",
+            f"（{missing} 页失败，可能是 std::bad_alloc 内存错误或 OCR 空结果）",
             file=sys.stderr,
         )
+        # actual_pages > 0 时返回 partial（而非 error），让上层合并可用结果
+        if actual_pages > 0:
+            print(f"[Controller] 部分提取成功：{actual_pages}/{expected_pages} 页可用 → {markdown_path}", file=sys.stderr)
+            return {
+                "status": "partial",
+                "pdf_path": str(pdf_path),
+                "source_path": str(pdf_path),
+                "output_dir": str(output_dir),
+                "markdown_path": str(markdown_path),
+                "json_path": str(json_path),
+                "pages": actual_pages,
+                "pages_processed": actual_pages,
+                "pages_failed": missing,
+                "expected_pages": expected_pages,
+                "stem": pdf_path.stem,
+            }
         return {
             "status": "error",
             "message": (
                 f"docling 仅提取 {actual_pages}/{expected_pages} 页"
                 f"（{missing} 页失败，可能是 std::bad_alloc 内存错误）。"
-                f" 建议：用 --chunk-size 5 分块提取。"
+                f" 建议：用 --chunk-size 5 分块提取，或 --backend pymupdf 走 fallback。"
             ),
             "pdf_path": str(pdf_path),
             "pages": actual_pages,
@@ -269,6 +321,125 @@ def extract_pdf(pdf_path: str, output_dir: str = None, page_range: tuple = None,
     }
 
 
+def extract_pdf_pymupdf_rapidocr(pdf_path: str, output_dir: str = None,
+                                page_range: tuple = None, dpi: int = 150,
+                                ocr_correct: bool = False) -> Dict[str, Any]:
+    """PyMuPDF + RapidOCR fallback 提取 PDF（绕开 docling）。
+
+    当 docling 因 std::bad_alloc / onnxruntime 内存爆炸崩溃时使用此 fallback。
+    完全绕开 docling，用 PyMuPDF 渲染每页为图片 + RapidOCR 直接 OCR。
+
+    优点：稳定，内存可控（图片分辨率可调）
+    缺点：失去 docling 的版面分析、表格提取、公式占位符（公式全部丢失为空）
+
+    Args:
+        pdf_path: PDF 文件路径
+        output_dir: 输出目录（默认 Review - <stem>/）
+        page_range: 可选，(start, end) 页码范围（1-indexed, 闭区间）
+        dpi: 渲染分辨率（默认 150，足够 OCR；扫描版可降到 100 省内存）
+        ocr_correct: 是否对 OCR 输出做后处理纠错
+    """
+    import io
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        return {"status": "error", "message": f"PDF 不存在: {pdf_path}"}
+
+    if output_dir is None:
+        output_dir = pdf_path.parent / f"Review - {pdf_path.stem}"
+    else:
+        output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import fitz  # PyMuPDF
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError as e:
+        return {
+            "status": "error",
+            "message": f"PyMuPDF/RapidOCR 未安装: {e}. 请运行 pip install PyMuPDF rapidocr-onnxruntime",
+        }
+
+    range_label = f" p.{page_range[0]}-{page_range[1]}" if page_range else ""
+    print(f"[Controller] PyMuPDF+RapidOCR fallback 提取: {pdf_path}{range_label} @ {dpi}DPI", file=sys.stderr)
+
+    ocr = RapidOCR()
+    zoom = dpi / 72.0
+    mat = fitz.Matrix(zoom, zoom)
+
+    with fitz.open(str(pdf_path)) as doc:
+        total = doc.page_count
+        if page_range is not None:
+            start_page, end_page = page_range
+        else:
+            start_page, end_page = 1, total
+
+        md_parts = []
+        pages_ok = 0
+        pages_fail = 0
+        for page_num in range(start_page, end_page + 1):
+            if page_num > total:
+                break
+            page = doc[page_num - 1]
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            img_bytes = pix.tobytes("png")
+            try:
+                result, _ = ocr(img_bytes)
+                if result:
+                    lines = [item[1] for item in result]
+                    text = "\n".join(lines)
+                else:
+                    text = ""
+                md_parts.append(f"\n\n[PAGE {page_num}]\n\n{text}\n")
+                pages_ok += 1
+            except Exception as e:
+                md_parts.append(f"\n\n[PAGE {page_num}]\n\n<!-- OCR failed: {e} -->\n")
+                pages_fail += 1
+                print(f"[Controller]   page {page_num} OCR failed: {e}", file=sys.stderr)
+
+    markdown = "".join(md_parts)
+
+    if ocr_correct:
+        try:
+            from ocr_corrector import correct_ocr_errors, has_ocr_markers
+            if has_ocr_markers(markdown):
+                markdown, corrections = correct_ocr_errors(markdown, verbose=True)
+                if corrections:
+                    print(f"[Controller] OCR 纠错：{len(corrections)} 类错误已修", file=sys.stderr)
+        except ImportError:
+            print("[Controller] 警告：ocr_corrector 模块未找到，跳过 OCR 纠错", file=sys.stderr)
+
+    markdown_path = output_dir / "extracted_content.md"
+    markdown_path.write_text(markdown, encoding="utf-8")
+
+    json_data = {
+        "schema_name": "PyMuPDFRapidOCRDocument",
+        "name": pdf_path.stem,
+        "pages": pages_ok,
+        "pages_failed": pages_fail,
+        "dpi": dpi,
+        "backend": "pymupdf_rapidocr",
+    }
+    json_path = output_dir / "extracted_content.json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(json_data, f, ensure_ascii=False, indent=2)
+
+    status = "success" if pages_fail == 0 else "partial"
+    print(f"[Controller] fallback 完成: {pages_ok}/{end_page - start_page + 1} 页 → {markdown_path}", file=sys.stderr)
+
+    return {
+        "status": status,
+        "pdf_path": str(pdf_path),
+        "source_path": str(pdf_path),
+        "output_dir": str(output_dir),
+        "markdown_path": str(markdown_path),
+        "json_path": str(json_path),
+        "pages": pages_ok,
+        "pages_failed": pages_fail,
+        "backend": "pymupdf_rapidocr",
+        "stem": pdf_path.stem,
+    }
+
+
 def _get_pdf_page_count(pdf_path: Path) -> int:
     """快速读取 PDF 总页数（不加载 docling）"""
     try:
@@ -279,7 +450,8 @@ def _get_pdf_page_count(pdf_path: Path) -> int:
         return 0
 
 
-def _extract_chunk_in_subprocess(pdf_path: str, output_dir: str, page_start: int, page_end: int) -> Dict[str, Any]:
+def _extract_chunk_in_subprocess(pdf_path: str, output_dir: str, page_start: int, page_end: int,
+                                 ocr_scale: int = None) -> Dict[str, Any]:
     """用独立 Python 子进程跑单块提取。
 
     关键：必须在子进程里跑，因为 docling 的 C++ 后端（docling-parse + onnxruntime）
@@ -298,6 +470,8 @@ def _extract_chunk_in_subprocess(pdf_path: str, output_dir: str, page_start: int
         str(page_start),
         str(page_end),
     ]
+    if ocr_scale is not None:
+        cmd.append(str(ocr_scale))
     try:
         result = subprocess.run(
             cmd,
@@ -339,7 +513,8 @@ def _extract_chunk_in_subprocess(pdf_path: str, output_dir: str, page_start: int
     return {"status": "error", "message": f"块 p.{page_start}-{page_end} 未产生文件"}
 
 
-def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int = 50) -> Dict[str, Any]:
+def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int = 50,
+                        ocr_scale: int = None) -> Dict[str, Any]:
     """分块提取大 PDF，避免 docling-parse C++ 端内存累积导致 std::bad_alloc。
 
     关键策略：**每块在独立 Python 子进程中跑**。
@@ -403,16 +578,30 @@ def chunked_extract_pdf(pdf_path: str, output_dir: str = None, chunk_size: int =
 
         chunk_start = time.time()
         chunk_result = _extract_chunk_in_subprocess(
-            str(pdf_path), str(chunk_subdir), start, end
+            str(pdf_path), str(chunk_subdir), start, end, ocr_scale=ocr_scale
         )
         print(f"  块耗时 {(time.time() - chunk_start)/60:.1f}min", file=sys.stderr)
 
         if chunk_result.get("status") != "success":
-            pages_failed += (end - start + 1)
-            failed_ranges.append((start, end))
             err = chunk_result.get("message", "")[:300]
             print(f"[Controller]   块失败 p.{start}-{end}: {err}", file=sys.stderr)
-            continue
+            print(f"[Controller]   尝试 PyMuPDF+RapidOCR fallback...", file=sys.stderr)
+            fb_result = extract_pdf_pymupdf_rapidocr(
+                str(pdf_path), str(chunk_subdir), page_range=(start, end)
+            )
+            if fb_result.get("status") in ("success", "partial"):
+                chunk_md_path = Path(fb_result["markdown_path"])
+                chunk_md = chunk_md_path.read_text(encoding="utf-8")
+                all_markdown.append(chunk_md)
+                pages_processed += fb_result.get("pages", 0)
+                pages_failed += fb_result.get("pages_failed", 0)
+                print(f"[Controller]   fallback 成功: {fb_result.get('pages',0)} 页", file=sys.stderr)
+                continue
+            else:
+                pages_failed += (end - start + 1)
+                failed_ranges.append((start, end))
+                print(f"[Controller]   fallback 也失败: {fb_result.get('message','')[:200]}", file=sys.stderr)
+                continue
 
         chunk_md_path = Path(chunk_result["markdown_path"])
         chunk_md = chunk_md_path.read_text(encoding="utf-8")
@@ -541,20 +730,26 @@ extract_multiple_pdfs = extract_multiple
 def extract(source_path: str, output_dir: str = None,
             chunk_size: int = None, no_chunk: bool = False,
             strip_images: bool = False, ocr_correct: bool = False,
-            use_cache: bool = True) -> Dict[str, Any]:
+            use_cache: bool = True, backend: str = None) -> Dict[str, Any]:
     """顶层提取分发器。按扩展名路由。
 
-    - .pdf → extract_pdf / chunked_extract_pdf（保留 PDF 专用 auto-chunk 逻辑）
+    - .pdf → extract_pdf / chunked_extract_pdf / extract_pdf_pymupdf_rapidocr
     - .docx → extractors.extract_document（MarkItDown/mammoth 内核）
     - .txt/.md → extractors.extract_document（charset-normalizer 编码检测）
 
-    非 PDF 格式忽略 chunk_size / no_chunk 参数（仅对 PDF 生效）。
+    非 PDF 格式忽略 chunk_size / no_chunk / backend 参数（仅对 PDF 生效）。
     strip_images 对 DOCX 有效（剥离 base64 图片为独立文件）。
     ocr_correct 对 PDF 有效（扫描版 OCR 后纠错常见误判）。
     use_cache: 是否使用提取缓存（默认 True，--no-cache 可关闭）。
+    backend: PDF 提取后端，auto（默认）/ docling / pymupdf。
+        - auto: docling 优先，块失败时自动 PyMuPDF+RapidOCR fallback；重试链走完仍 partial 时整体 fallback
+        - docling: 仅 docling（含 per-chunk fallback）
+        - pymupdf: 直接 PyMuPDF+RapidOCR，跳过 docling（最稳定，但无版面/表格/公式）
     """
     from config import get_config
     cfg = get_config()
+    if backend is None:
+        backend = cfg.pdf_backend() if hasattr(cfg, "pdf_backend") else "auto"
 
     path = Path(source_path)
     if not path.exists():
@@ -587,34 +782,66 @@ def extract(source_path: str, output_dir: str = None,
 
     # === 提取（带重试）===
     ext = path.suffix.lower()
-    result = _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correct, cfg)
+    # 读 config 的 ocr_scale（PDF 专用，降低 RapidOCR 渲染 scale 避免 numpy 内存爆炸）
+    ocr_scale = cfg.ocr_scale() if ext == ".pdf" else None
+    # pymupdf 后端直接走 fallback，不需 docling 重试
+    if ext == ".pdf" and backend == "pymupdf":
+        print("[Controller] backend=pymupdf，直接用 PyMuPDF+RapidOCR 提取", file=sys.stderr)
+        result = extract_pdf_pymupdf_rapidocr(str(path), str(output_dir), ocr_correct=ocr_correct)
+    else:
+        result = _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correct, cfg, ocr_scale=ocr_scale)
 
     # === 重试逻辑：PDF chunked 失败时减小 chunk_size 重试 ===
     # error 或 partial（失败比例高）都触发重试
-    if result.get("status") in ("error", "partial") and ext == ".pdf" and not no_chunk:
-        max_retries = cfg.max_retries()
-        shrink = cfg.retry_chunk_shrink()
-        for retry_i in range(max_retries):
-            current_chunk = (chunk_size or cfg.chunk_size()) // (shrink ** (retry_i + 1))
-            if current_chunk < 5:
-                break  # chunk 太小没意义
-            print(
-                f"[Controller] 第 {retry_i + 1} 次重试：chunk_size={current_chunk}",
-                file=sys.stderr,
-            )
-            result = _do_extract(path, output_dir, current_chunk, False, strip_images, ocr_correct, cfg)
-            status = result.get("status")
-            if status == "success":
-                break
-            if status == "partial":
-                # partial 时检查失败比例：失败 < 10% 可接受，否则继续重试更小 chunk
-                processed = result.get("pages_processed", 0)
-                failed = result.get("pages_failed", 0)
-                total = processed + failed
-                if total > 0 and failed / total < 0.1:
-                    print(f"[Controller] 接受 partial：{processed}/{total} 页成功（失败 {failed} 页 < 10%）", file=sys.stderr)
+    if result.get("status") in ("error", "partial") and ext == ".pdf" and not no_chunk and backend != "pymupdf":
+        # 优化：error 状态（docling 完全失败或失败比例高）直接跳过重试，让整体 fallback 接管
+        # 因为 chunk_size 减小解决不了"单页内存爆炸"问题
+        if result.get("status") == "error" and backend == "auto":
+            print(f"[Controller] docling 失败（error），跳过重试，直接整体 fallback", file=sys.stderr)
+        else:
+            max_retries = cfg.max_retries()
+            shrink = cfg.retry_chunk_shrink()
+            for retry_i in range(max_retries):
+                # 优化：如果失败比例 > 50%，说明 chunk_size 减小无效，直接整体 fallback
+                if result.get("status") == "partial":
+                    processed = result.get("pages_processed", 0)
+                    failed = result.get("pages_failed", 0)
+                    total = processed + failed
+                    if total > 0 and failed / total > 0.5:
+                        print(f"[Controller] 失败比例 {failed}/{total} > 50%，跳过重试，直接整体 fallback", file=sys.stderr)
+                        break
+                current_chunk = (chunk_size or cfg.chunk_size()) // (shrink ** (retry_i + 1))
+                if current_chunk < 5:
+                    break  # chunk 太小没意义
+                print(
+                    f"[Controller] 第 {retry_i + 1} 次重试：chunk_size={current_chunk}",
+                    file=sys.stderr,
+                )
+                result = _do_extract(path, output_dir, current_chunk, False, strip_images, ocr_correct, cfg, ocr_scale=ocr_scale)
+                status = result.get("status")
+                if status == "success":
                     break
-                # 失败多，继续重试
+                if status == "partial":
+                    # partial 时检查失败比例：失败 < 10% 可接受，否则继续重试更小 chunk
+                    processed = result.get("pages_processed", 0)
+                    failed = result.get("pages_failed", 0)
+                    total = processed + failed
+                    if total > 0 and failed / total < 0.1:
+                        print(f"[Controller] 接受 partial：{processed}/{total} 页成功（失败 {failed} 页 < 10%）", file=sys.stderr)
+                        break
+                    # 失败多，继续重试
+
+    # === 整体 fallback：docling 重试链走完仍 partial/error，且 backend=auto，用 PyMuPDF+RapidOCR 兜底 ===
+    if (result.get("status") in ("error", "partial") and ext == ".pdf" and backend == "auto"
+            and result.get("backend") != "pymupdf_rapidocr"):
+        processed = result.get("pages_processed", 0)
+        failed = result.get("pages_failed", 0)
+        total = processed + failed if failed else 1
+        if result.get("status") == "error" or (failed / total > 0.3):
+            print(f"[Controller] docling 失败比例高，整体 fallback 到 PyMuPDF+RapidOCR", file=sys.stderr)
+            fb = extract_pdf_pymupdf_rapidocr(str(path), str(output_dir), ocr_correct=ocr_correct)
+            if fb.get("status") in ("success", "partial"):
+                result = fb
 
     # === 保存缓存 ===
     if use_cache and cfg.cache_enabled() and result.get("status") in ("success", "partial"):
@@ -627,7 +854,8 @@ def extract(source_path: str, output_dir: str = None,
     return result
 
 
-def _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correct, cfg) -> Dict[str, Any]:
+def _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correct, cfg,
+                ocr_scale: int = None) -> Dict[str, Any]:
     """实际提取逻辑（不含缓存/重试），由 extract() 调用。"""
 
     if path.suffix.lower() == ".pdf":
@@ -650,8 +878,8 @@ def _do_extract(path, output_dir, chunk_size, no_chunk, strip_images, ocr_correc
                 )
 
         if use_chunked:
-            return chunked_extract_pdf(str(path), str(output_dir), effective_chunk_size)
-        return extract_pdf(str(path), str(output_dir), ocr_correct=ocr_correct)
+            return chunked_extract_pdf(str(path), str(output_dir), effective_chunk_size, ocr_scale=ocr_scale)
+        return extract_pdf(str(path), str(output_dir), ocr_correct=ocr_correct, ocr_scale=ocr_scale)
 
     # 非 PDF：chunk_size / no_chunk 不适用，仅提示
     if chunk_size is not None or no_chunk:
@@ -852,10 +1080,17 @@ def main():
         if page_start < 1 or page_end < page_start:
             print(json.dumps({"status": "error", "message": f"页码范围无效: {page_start}-{page_end}"}))
             sys.exit(2)
+        # 可选第 6 参数：ocr_scale（降低 RapidOCR 渲染 scale 避免 numpy 内存爆炸）
+        ocr_scale = None
+        if len(sys.argv) > 6:
+            try:
+                ocr_scale = int(sys.argv[6])
+            except ValueError:
+                pass
         # 注意：分块子进程模式不支持 ocr_correct（ocr_correct 仅在单进程 extract_pdf 生效）
         # 因为分块提取走 chunked_extract_pdf → 多子进程并行，每块独立提取后合并，
         # OCR 纠错在合并后由调用方对完整 markdown 调用 ocr_corrector.correct_ocr_errors
-        result = extract_pdf(pdf_path, output_dir, page_range=(page_start, page_end))
+        result = extract_pdf(pdf_path, output_dir, page_range=(page_start, page_end), ocr_scale=ocr_scale)
         # 通过 stdout 最后一行打印 JSON 结果
         print(json.dumps(result, ensure_ascii=False))
         sys.exit(0 if result.get("status") == "success" else 1)
@@ -922,6 +1157,12 @@ def main():
         action="store_true",
         help="禁用提取缓存（强制重新提取）",
     )
+    p_extract.add_argument(
+        "--backend",
+        choices=["auto", "docling", "pymupdf"],
+        default=None,
+        help="PDF 提取后端：auto（默认，docling 优先+自动 fallback）/ docling（仅 docling）/ pymupdf（直接 PyMuPDF+RapidOCR，最稳定但无版面/表格/公式）。扫描版 PDF 建议 auto 或 pymupdf",
+    )
 
     p_gen = sub.add_parser("generate", help="从 knowledge JSON 生成 HTML/MD/JSON")
     p_gen.add_argument("knowledge_json", help="knowledge JSON 路径")
@@ -980,6 +1221,7 @@ def main():
                 strip_images=args.strip_images,
                 ocr_correct=args.ocr_correct,
                 use_cache=use_cache,
+                backend=args.backend,
             )
         else:
             result = extract_multiple(
