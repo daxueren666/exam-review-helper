@@ -17,6 +17,17 @@
 
 不需要额外配 API key——5-pass 由宿主调用的 LLM 执行，用你登录宿主时的认证。
 
+## v1.2 稳定性更新
+
+**修复扫描版大 PDF 的 docling `std::bad_alloc` 崩溃**（[docling issue #3671](https://github.com/docling-project/docling/issues/3671)）：
+
+- **默认用 pdfium 后端**：绕开 docling-parse C++ 解析层（崩溃根源），保留版面分析+公式占位符+表格能力
+- **ocr_scale=2**：降低 RapidOCR 渲染分辨率（216→144 DPI），减少 numpy 内存 56%，不降 OCR 质量
+- **三层 fallback**：pdfium → per-chunk PyMuPDF+RapidOCR → 整体 PyMuPDF+RapidOCR
+- **partial 接受**：部分页成功时保留 docling 公式占位符，不盲目 fallback 降质量
+
+详见 [release v1.2.1](https://github.com/daxueren666/exam-review-helper/releases/tag/v1.2.1)。
+
 ## 安装
 
 **前置要求**：
@@ -35,7 +46,7 @@ gh skill install daxueren666/exam-review-helper --agent claude-code --scope user
 gh skill install daxueren666/exam-review-helper --agent codex --scope user
 
 # 锁定到特定版本（生产环境推荐）
-gh skill install daxueren666/exam-review-helper --agent claude-code --pin v1.1.0
+gh skill install daxueren666/exam-review-helper --agent claude-code --pin v1.2.1
 ```
 
 **更新到最新版本**：
